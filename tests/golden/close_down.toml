@@ -1,0 +1,4 @@
+[[tasks]]
+type = "CloseDown"
+
+[tasks.params]

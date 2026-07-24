@@ -1,0 +1,8 @@
+[[tasks]]
+type = "Fight"
+
+[tasks.params]
+stage = "XX-8"
+medicine = 2
+stone = 0
+times = 5

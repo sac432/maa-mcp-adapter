@@ -3,7 +3,7 @@ use std::path::{Component, Path, PathBuf};
 
 use thiserror::Error;
 
-mod atomic;
+pub(crate) mod atomic;
 mod repository;
 
 pub use repository::{FilePlanRepository, PlanRepository};

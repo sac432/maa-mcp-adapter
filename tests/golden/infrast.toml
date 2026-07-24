@@ -1,0 +1,6 @@
+[[tasks]]
+type = "Infrast"
+
+[tasks.params]
+mode = 0
+facility = ["Mfg", "Trade", "Power", "Control", "Reception", "Office", "Dorm"]

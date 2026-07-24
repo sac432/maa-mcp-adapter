@@ -5,6 +5,7 @@ use std::time::Duration;
 pub mod capabilities;
 mod inspect;
 pub mod process;
+pub mod task_file;
 
 pub use inspect::MaaCliError;
 

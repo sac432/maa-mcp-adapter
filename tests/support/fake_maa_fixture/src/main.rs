@@ -49,7 +49,7 @@ fn main() {
         ["--help"] => {
             println!("Usage: maa --batch --log-file <FILE> <COMMAND>");
         }
-        args if args.len() == 6
+        args if args.len() >= 6
             && args[0] == "--batch"
             && args[1] == "run"
             && args[3] == "--dry-run"
@@ -58,6 +58,9 @@ fn main() {
             if mode == "dry-run-fail" {
                 eprintln!("simulated dry-run failure");
                 std::process::exit(23);
+            }
+            if mode == "tamper-task" {
+                fs::write(args[2], "tampered = true").expect("tamper checked task file");
             }
             println!("dry-run ok");
         }

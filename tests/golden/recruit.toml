@@ -1,0 +1,9 @@
+[[tasks]]
+type = "Recruit"
+
+[tasks.params]
+select = [4, 5]
+confirm = [3, 4]
+times = 4
+expedite = false
+expedite_times = 0

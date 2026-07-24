@@ -1,0 +1,5 @@
+[[tasks]]
+type = "StartUp"
+
+[tasks.params]
+start_game_enabled = true

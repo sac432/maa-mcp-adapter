@@ -35,6 +35,7 @@ impl FakeMaa {
         &self.executable
     }
 
+    #[allow(dead_code)]
     pub fn set_config_directory(&self, directory: &Path) {
         fs::write(
             self.executable.with_extension("config-dir"),

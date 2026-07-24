@@ -6,12 +6,12 @@ use uuid::Uuid;
 
 use super::StorageError;
 
-pub(super) enum WriteMode {
+pub(crate) enum WriteMode {
     Create,
     Replace,
 }
 
-pub(super) fn write_atomically(
+pub(crate) fn write_atomically(
     destination: &Path,
     bytes: &[u8],
     mode: WriteMode,
