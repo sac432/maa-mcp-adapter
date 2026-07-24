@@ -155,9 +155,9 @@ impl RunControlService {
             .join(run_id.to_string())
             .join("stop.requested");
         write_stop_marker(&stop_path, StopMethod::Graceful)?;
-        if request_graceful_stop(record.pid).is_ok()
-            && let Some(exit_code) =
-                wait_for_exit(record.pid, record.process_start_identity, graceful_timeout)?
+        let _ = request_graceful_stop(record.pid);
+        if let Some(exit_code) =
+            wait_for_exit(record.pid, record.process_start_identity, graceful_timeout)?
         {
             return finalize_run(&self.state_directory, run_id, exit_code);
         }
