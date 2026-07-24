@@ -505,15 +505,15 @@ git commit -m "feat: persist and update daily plans"
 
 ### 要完成的任务
 
-- [ ] **任务 4.1：定义内部任务文件 DTO**
+- [x] **任务 4.1：定义内部任务文件 DTO**
 
   `src/maa_cli/task_file.rs` 定义仅用于序列化的 `GeneratedTaskFile`、`GeneratedTask` 和各任务参数结构。不得使用 `serde_json::Value` 或任意 map 承载 Agent 输入。
 
-- [ ] **任务 4.2：逐类实现映射**
+- [x] **任务 4.2：逐类实现映射**
 
   按固定顺序输出 `StartUp`、`Fight`、`Recruit`、`Infrast`、`Mall`、`Award`、`CloseDown`。未选择的任务不输出；每种任务建立独立 golden fixture。
 
-- [ ] **任务 4.3：强制写入安全字段**
+- [x] **任务 4.3：强制写入安全字段**
 
 ```toml
 [[tasks]]
@@ -529,15 +529,15 @@ force_shopping_if_credit_full = false
 
   实际输出同时包含计划中已验证的其他字段；上面两个值不能从请求参数覆盖。
 
-- [ ] **任务 4.4：生成到运行专属目录**
+- [x] **任务 4.4：生成到运行专属目录**
 
   写入 `runs/<run_id>/task.toml`，先完成原子写入，再将规范绝对路径交给 `maa-cli`。验证路径位于状态目录内。
 
-- [ ] **任务 4.5：实现执行前 dry-run**
+- [x] **任务 4.5：实现执行前 dry-run**
 
   对准确的生成文件、配置档和地址覆盖执行 `maa --batch run <absolute-path> --dry-run ...`。dry-run 后再次读取文件并核对 SHA-256，防止检查与执行之间文件被替换。
 
-- [ ] **任务 4.6：提交阶段成果**
+- [x] **任务 4.6：提交阶段成果**
 
 ```text
 git add src/maa_cli/task_file.rs tests
@@ -546,13 +546,24 @@ git commit -m "feat: generate validated maa task files"
 
 ### 阶段验收标准
 
-- [ ] 每类任务的 golden 文件与 MAA 参数文档一致。
-- [ ] 生成器 API 不存在任意 JSON、TOML、任务名或参数注入口。
-- [ ] 所有 Fight golden 文件都包含 `stone = 0`。
-- [ ] 所有 Mall golden 文件都包含 `force_shopping_if_credit_full = false`。
-- [ ] 中文、空格和长路径可通过 fake maa 与真实 `maa-cli --dry-run`。
-- [ ] dry-run 后文件改变时执行被拒绝。
-- [ ] 三条必需 Cargo 检查全部通过。
+- [x] 每类任务的 golden 文件与 MAA 参数文档一致。
+- [x] 生成器 API 不存在任意 JSON、TOML、任务名或参数注入口。
+- [x] 所有 Fight golden 文件都包含 `stone = 0`。
+- [x] 所有 Mall golden 文件都包含 `force_shopping_if_credit_full = false`。
+- [x] 中文、空格和长路径可通过 fake maa 与真实 `maa-cli --dry-run`。
+- [x] dry-run 后文件改变时执行被拒绝。
+- [x] 三条必需 Cargo 检查全部通过。
+
+### 阶段审查记录
+
+- 实现提交：`07fae4c feat: generate validated maa task files`
+- TDD RED：先确认 task_file 模块、RunId/store/artifact、dry-run 与完整性错误缺失；golden 测试还发现 toml 1.1 的值表达式解析 API 不适合完整文档，并修正为文档解析。
+- TDD GREEN：完成七类仅序列化 DTO、规范顺序映射、运行专属绝对路径、同目录原子写入、profile 绑定、参数数组 dry-run 和执行后 SHA-256 复核。
+- 安全字段：Fight 永远写 `stone = 0`；Mall 永远写 `force_shopping_if_credit_full = false`；配置黑名单通过专用 `TaskFilePolicy` 保留，并且即使配置遗漏也强制补入“加急许可”。
+- 审查修正：重复 RunId 拒绝且不覆盖既有 task；artifact 与生成时 profile 绑定；任务文件校验方法保留为 crate 内接口，供阶段 5 在真正执行前再次核对。
+- 自动验证：根 crate 与 fake 夹具格式检查、`cargo build --locked`、严格 clippy 和 `cargo test --locked --all-targets` 全部通过；测试计数为 1 个单元测试、16 个环境测试、24 个计划/存储/服务测试、1 个 stdio 协议测试和 7 个任务文件测试，共 49 项。
+- 人工环境阻塞：fake maa 已覆盖中文、空格、长路径、地址元字符和 dry-run 篡改；本机仍未发现真实 `maa.exe`/`maa-cli.exe`，因此未声称真实 MaaCore dry-run 成功，发布前必须补做。
+- 最终结论：自动化范围内无 Critical 或 Important 遗留问题；真实 `maa-cli` 验证保留为明确人工验收项，可以进入阶段 5。
 
 ---
 
