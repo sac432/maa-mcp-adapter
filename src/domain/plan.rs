@@ -1,3 +1,6 @@
+use std::fmt::{Display, Formatter};
+use std::str::FromStr;
+
 use serde::de::Error as _;
 use serde::{Deserialize, Deserializer, Serialize};
 use uuid::Uuid;
@@ -11,6 +14,20 @@ pub struct PlanId(Uuid);
 impl PlanId {
     pub fn new() -> Self {
         Self(Uuid::new_v4())
+    }
+}
+
+impl Display for PlanId {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
+        Display::fmt(&self.0, formatter)
+    }
+}
+
+impl FromStr for PlanId {
+    type Err = uuid::Error;
+
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
+        Uuid::parse_str(value).map(Self)
     }
 }
 

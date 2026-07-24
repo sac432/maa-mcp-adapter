@@ -6,6 +6,7 @@ pub mod hash;
 pub mod lifecycle;
 pub mod normalize;
 pub mod policy;
+pub mod service;
 pub mod summary;
 
 #[derive(Debug, Error, PartialEq, Eq)]

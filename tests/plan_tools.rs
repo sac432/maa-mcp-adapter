@@ -1,3 +1,7 @@
+use std::fs;
+use std::path::Path;
+use std::time::{Duration, SystemTime};
+
 use maa_mcp_adapter::domain::{
     AwardPlan, CloseDownPlan, DailyPlan, DailyTask, FightCategory, FightPlan, InfrastPlan,
     MallPlan, PlanState, RecruitPlan, StartUpPlan,
@@ -6,9 +10,14 @@ use maa_mcp_adapter::planning::hash::hash_plan;
 use maa_mcp_adapter::planning::lifecycle::revise_plan;
 use maa_mcp_adapter::planning::normalize::normalize_plan;
 use maa_mcp_adapter::planning::policy::{validate_plan, validate_transition};
+use maa_mcp_adapter::planning::service::{PlanPatch, PlanService};
 use maa_mcp_adapter::planning::summary::summarize_plan;
 use maa_mcp_adapter::planning::{MissingField, TaskKind, ValidationError};
+use maa_mcp_adapter::storage::{
+    FilePlanRepository, PlanRepository, StorageError, resolve_state_directory,
+};
 use serde_json::json;
+use tempfile::tempdir;
 
 #[test]
 fn state_machine_allows_only_explicit_daily_plan_transitions() {
@@ -603,4 +612,243 @@ fn complete_plan() -> DailyPlan {
             DailyTask::CloseDown(CloseDownPlan {}),
         ],
     )
+}
+
+#[test]
+fn state_directory_is_absolute_contained_and_has_a_windows_default() {
+    let temp = tempdir().expect("create test directory");
+    let explicit = temp.path().join("adapter-state");
+    assert_eq!(
+        resolve_state_directory(Some(&explicit), None).expect("resolve explicit state directory"),
+        explicit
+    );
+    assert_eq!(
+        resolve_state_directory(None, Some(temp.path().as_os_str()))
+            .expect("resolve default state directory"),
+        temp.path().join("maa-mcp-adapter")
+    );
+    assert!(resolve_state_directory(Some(Path::new("relative-state")), None).is_err());
+    assert!(resolve_state_directory(Some(&temp.path().join("safe/../escape")), None).is_err());
+}
+
+#[test]
+fn plan_repository_survives_restart_and_ignores_interrupted_temp_files() {
+    let temp = tempdir().expect("create test directory");
+    let repository =
+        FilePlanRepository::new(temp.path().to_path_buf()).expect("create plan repository");
+    let plan = complete_plan();
+    repository.create(&plan).expect("create plan");
+
+    fs::write(
+        temp.path().join("plans/.interrupted-write.tmp"),
+        br#"{"partial":"#,
+    )
+    .expect("simulate interrupted temporary write");
+    drop(repository);
+
+    let restarted =
+        FilePlanRepository::new(temp.path().to_path_buf()).expect("restart plan repository");
+    assert_eq!(
+        restarted.load(&plan.plan_id).expect("load after restart"),
+        plan
+    );
+}
+
+#[test]
+fn repository_revision_conflict_never_silently_overwrites() {
+    let temp = tempdir().expect("create test directory");
+    let repository =
+        FilePlanRepository::new(temp.path().to_path_buf()).expect("create plan repository");
+    let plan = complete_plan();
+    repository.create(&plan).expect("create plan");
+
+    let mut replacement = plan.clone();
+    replacement.profile = "night".to_owned();
+    replacement.revision = 1;
+    repository
+        .replace(0, &replacement)
+        .expect("replace matching revision");
+
+    let mut stale = plan.clone();
+    stale.profile = "stale".to_owned();
+    stale.revision = 1;
+    let error = repository
+        .replace(0, &stale)
+        .expect_err("reject stale revision");
+    assert!(matches!(
+        error,
+        StorageError::RevisionConflict {
+            expected: 0,
+            actual: 1
+        }
+    ));
+    assert_eq!(
+        repository
+            .load(&plan.plan_id)
+            .expect("load winning replacement"),
+        replacement
+    );
+}
+
+#[test]
+fn plan_service_recovers_a_draft_then_previews_only_when_complete() {
+    let temp = tempdir().expect("create test directory");
+    let repository =
+        FilePlanRepository::new(temp.path().to_path_buf()).expect("create plan repository");
+    let service = PlanService::new(repository);
+    let created = service
+        .create("", vec![DailyTask::Fight(FightPlan::default())])
+        .expect("create incomplete draft");
+    let plan_id = created.plan.plan_id;
+    assert_eq!(created.plan.state, PlanState::Draft);
+    assert!(created.next_question.is_some());
+    assert!(
+        created
+            .missing_fields
+            .contains(&MissingField::FightStage { task_index: 0 })
+    );
+    drop(service);
+
+    let restarted = PlanService::new(
+        FilePlanRepository::new(temp.path().to_path_buf()).expect("restart plan repository"),
+    );
+    let with_profile = restarted
+        .update(
+            &plan_id,
+            0,
+            PlanPatch::SetProfile {
+                profile: "default".to_owned(),
+            },
+        )
+        .expect("set profile after restart");
+    assert_eq!(with_profile.plan.revision, 1);
+    assert_eq!(with_profile.plan.state, PlanState::Draft);
+
+    let complete = restarted
+        .update(
+            &plan_id,
+            1,
+            PlanPatch::ReplaceTask {
+                task_index: 0,
+                task: DailyTask::Fight(FightPlan {
+                    category: Some(FightCategory::Event),
+                    stage: Some("XX-8".to_owned()),
+                    times: Some(5),
+                    medicine: Some(0),
+                }),
+            },
+        )
+        .expect("complete draft after restart");
+    assert_eq!(complete.plan.revision, 2);
+    assert_eq!(
+        complete.plan.state,
+        PlanState::Draft,
+        "only preview may promote an ordinary draft"
+    );
+
+    let preview = restarted.preview(&plan_id).expect("preview complete draft");
+    assert_eq!(preview.plan.state, PlanState::Ready);
+    assert_eq!(preview.plan.revision, 3);
+    assert!(preview.missing_fields.is_empty());
+    assert!(
+        preview
+            .summary
+            .as_deref()
+            .is_some_and(|summary| summary.contains("关卡：XX-8"))
+    );
+}
+
+#[test]
+fn plan_service_cancels_unstarted_plan_and_rejects_later_updates() {
+    let temp = tempdir().expect("create test directory");
+    let service = PlanService::new(
+        FilePlanRepository::new(temp.path().to_path_buf()).expect("create plan repository"),
+    );
+    let created = service
+        .create("default", vec![DailyTask::Infrast(InfrastPlan {})])
+        .expect("create complete draft");
+    let ready = service
+        .preview(&created.plan.plan_id)
+        .expect("preview complete draft");
+    let cancelled = service
+        .cancel(&ready.plan.plan_id, ready.plan.revision)
+        .expect("cancel ready plan");
+
+    assert_eq!(cancelled.plan.state, PlanState::Cancelled);
+    assert_eq!(cancelled.plan.confirmed_hash, None);
+    assert!(
+        service
+            .update(
+                &cancelled.plan.plan_id,
+                cancelled.plan.revision,
+                PlanPatch::SetProfile {
+                    profile: "other".to_owned()
+                }
+            )
+            .is_err()
+    );
+}
+
+#[test]
+fn plan_patch_deserialization_rejects_unknown_operations_and_fields() {
+    assert!(
+        serde_json::from_value::<PlanPatch>(json!({
+            "operation": "shell",
+            "command": "maa run anything"
+        }))
+        .is_err()
+    );
+    assert!(
+        serde_json::from_value::<PlanPatch>(json!({
+            "operation": "set_profile",
+            "profile": "default",
+            "unknown": true
+        }))
+        .is_err()
+    );
+}
+
+#[test]
+fn cleanup_removes_only_old_cancelled_plans_and_preserves_uncertain_records() {
+    let temp = tempdir().expect("create test directory");
+    let repository =
+        FilePlanRepository::new(temp.path().to_path_buf()).expect("create plan repository");
+
+    let mut cancelled = complete_plan();
+    cancelled.state = PlanState::Cancelled;
+    let mut ready = complete_plan();
+    ready.state = PlanState::Ready;
+    let mut confirmed = complete_plan();
+    confirmed.state = PlanState::Confirmed;
+    confirmed.confirmed_hash = Some(hash_plan(&confirmed).expect("hash confirmed plan"));
+    for plan in [&cancelled, &ready, &confirmed] {
+        repository.create(plan).expect("create cleanup fixture");
+    }
+    let corrupt_path = temp.path().join("plans/corrupt.json");
+    let temporary_path = temp.path().join("plans/.unfinished.tmp");
+    fs::write(&corrupt_path, "{not-json").expect("create corrupt record");
+    fs::write(&temporary_path, "partial").expect("create temporary record");
+
+    let removed = repository
+        .cleanup_cancelled(SystemTime::now() + Duration::from_secs(7 * 24 * 60 * 60 + 1))
+        .expect("clean old cancelled plans");
+
+    assert_eq!(removed, 1);
+    assert!(matches!(
+        repository.load(&cancelled.plan_id),
+        Err(StorageError::NotFound)
+    ));
+    assert_eq!(repository.load(&ready.plan_id).expect("keep Ready"), ready);
+    assert_eq!(
+        repository.load(&confirmed.plan_id).expect("keep Confirmed"),
+        confirmed
+    );
+    assert!(corrupt_path.exists(), "corrupt records must fail closed");
+    assert!(temporary_path.exists(), "temporary files are never plans");
+    assert!("..".parse::<maa_mcp_adapter::domain::PlanId>().is_err());
+    assert!(
+        "not-a-uuid"
+            .parse::<maa_mcp_adapter::domain::PlanId>()
+            .is_err()
+    );
 }

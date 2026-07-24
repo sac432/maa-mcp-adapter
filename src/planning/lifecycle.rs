@@ -22,15 +22,18 @@ pub fn revise_plan(
         .revision
         .checked_add(1)
         .ok_or(DomainError::RevisionOverflow)?;
+    let previous_state = plan.state;
 
     plan.profile = profile;
     plan.tasks = tasks;
     plan.revision = revision;
     plan.confirmed_hash = None;
-    plan.state = if validate_plan(plan).is_valid() {
-        PlanState::Ready
-    } else {
-        PlanState::Draft
+    let complete = validate_plan(plan).is_valid();
+    plan.state = match previous_state {
+        PlanState::Draft => PlanState::Draft,
+        PlanState::Ready | PlanState::Confirmed if complete => PlanState::Ready,
+        PlanState::Ready | PlanState::Confirmed => PlanState::Draft,
+        _ => unreachable!("non-editable states returned before mutation"),
     };
 
     Ok(())
