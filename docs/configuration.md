@@ -1,0 +1,86 @@
+# 适配器配置
+
+适配器只读取自身状态目录中的 `config.toml`。默认位置：
+
+```text
+%LOCALAPPDATA%\maa-mcp-adapter\config.toml
+```
+
+它不会复制、迁移或修改 `maa-cli` 的配置档。
+
+## 完整示例
+
+```toml
+maa_executable = 'C:\Tools\MAA\maa.exe'
+state_directory = 'D:\AppData\maa-mcp-adapter'
+retention_days = 7
+redaction_patterns = [
+  'account-123456',
+  'device-serial-value',
+  'private-token-value',
+]
+```
+
+Windows 路径建议使用 TOML 单引号字面字符串，以免对反斜杠重复转义。所有路径必须是绝对路径，不能包含 `.` 或 `..` 路径段。
+
+## 字段
+
+### `maa_executable`
+
+可选。显式指定用户已经安装的 `maa.exe` 或 `maa-cli.exe`。
+
+- 必须是存在的绝对文件路径。
+- 配置后优先于 `PATH`。
+- 未配置时依次在 `PATH` 中查找 `maa.exe`、`maa-cli.exe`。
+- 适配器不会下载或更新 MAA。
+
+### `state_directory`
+
+可选。覆盖适配器自己的状态目录。默认是 `%LOCALAPPDATA%\maa-mcp-adapter`。
+
+目录内容包括：
+
+```text
+config.toml
+plans\<plan_id>.json
+runs\<run_id>\task.toml
+runs\<run_id>\record.json
+runs\<run_id>\stdout.log
+runs\<run_id>\stderr.log
+locks\active-run.lock
+```
+
+状态目录与 MAA 配置目录不能互相包含，避免适配器任务文件污染用户的 MAA 配置。
+
+### `retention_days`
+
+可选，默认 `7`。Server 启动时只清理超过该期限且明确处于 `Succeeded`、`Failed` 或 `Stopped` 的运行。
+
+以下内容永不自动清理：
+
+- `Running`；
+- `Unknown`；
+- 记录损坏或无法读取的目录；
+- 含有未知文件或子目录的运行目录。
+
+### `redaction_patterns`
+
+可选的字面字符串数组。`get_run_log` 返回内容前，会把每个非空匹配替换为 `[REDACTED]`。
+
+建议加入：
+
+- 账号标识；
+- 模拟器地址或设备序列号；
+- 本地路径中不希望发送给模型的片段；
+- token、cookie 或私有服务标识。
+
+这些模式不是正则表达式，按大小写敏感的字面文本匹配。不要把秘密本身提交到公开仓库；个人配置应保留在默认用户状态目录。
+
+## 修改配置后的步骤
+
+1. 停止并重新启动 MCP 客户端中的 `maa` Server。
+2. 调用 `check_environment`。
+3. 确认 `can_plan = true`。
+4. 只有所有能力探测通过且 `can_execute = true` 时才执行计划。
+
+配置解析拒绝未知字段。错误不会自动退回不安全默认值。

@@ -526,6 +526,108 @@ fn plan_change_during_elicitation_invalidates_acceptance() {
     client.finish();
 }
 
+#[test]
+fn full_stdio_daily_flow_reaches_status_log_and_stop() {
+    let data = tempfile::tempdir().expect("temporary app data");
+    let state = data.path().join("maa-mcp-adapter");
+    fs::create_dir(&state).expect("state directory");
+    let fake_root = tempfile::tempdir().expect("fake maa root");
+    let fake = configured_background_fake(fake_root.path());
+    let executable = fake
+        .executable()
+        .display()
+        .to_string()
+        .replace('\\', "\\\\");
+    fs::write(
+        state.join("config.toml"),
+        format!("maa_executable = \"{executable}\"\nredaction_patterns = [\"background\"]\n"),
+    )
+    .expect("adapter config");
+    let mut client = ExecutionMcpClient::spawn(
+        data.path(),
+        json!({"elicitation": {"form": {"schemaValidation": true}}}),
+    );
+
+    let environment = client.call_tool(60, "check_environment", json!({}));
+    assert_eq!(
+        environment["result"]["structuredContent"]["can_execute"],
+        true
+    );
+    let options = client.call_tool(61, "get_daily_options", json!({"intent": "刷日常"}));
+    assert_eq!(
+        options["result"]["structuredContent"]["task_types"]
+            .as_array()
+            .expect("task types")
+            .len(),
+        7
+    );
+    let created = client.call_tool(
+        62,
+        "create_daily_plan",
+        json!({
+            "profile": "default",
+            "tasks": [{"type": "infrast", "params": {}}]
+        }),
+    );
+    let plan_id = created["result"]["structuredContent"]["plan_id"]
+        .as_str()
+        .expect("plan id")
+        .to_owned();
+    let updated = client.call_tool(
+        63,
+        "update_daily_plan",
+        json!({
+            "plan_id": plan_id,
+            "expected_revision": 0,
+            "patch": {
+                "operation": "add_task",
+                "task": {"type": "award", "params": {
+                    "daily": true,
+                    "weekly": false,
+                    "mail": false,
+                    "event": false
+                }}
+            }
+        }),
+    );
+    assert_eq!(updated["result"]["structuredContent"]["revision"], 1);
+    let preview = client.call_tool(64, "preview_daily_plan", json!({"plan_id": plan_id}));
+    let expected_hash = preview["result"]["structuredContent"]["plan_hash"]
+        .as_str()
+        .expect("plan hash")
+        .to_owned();
+
+    let elicitation = client.begin_execute(&plan_id, &expected_hash, 65);
+    assert_elicitation_request(&elicitation, &expected_hash);
+    client.respond_elicitation(&elicitation, "accept", Some(true));
+    let started = client.read_response(65);
+    let run_id = started["result"]["structuredContent"]["run_id"]
+        .as_str()
+        .expect("run id")
+        .to_owned();
+    let status = client.call_tool(66, "get_run_status", json!({"run_id": run_id}));
+    assert_eq!(status["result"]["structuredContent"]["status"], "running");
+    thread::sleep(Duration::from_millis(50));
+    let log = client.call_tool(
+        67,
+        "get_run_log",
+        json!({"run_id": run_id, "stream": "stdout"}),
+    );
+    assert!(
+        log["result"]["structuredContent"]["content"]
+            .as_str()
+            .is_some_and(|content| content.contains("[REDACTED] run started")),
+        "{log}"
+    );
+    let stopped = client.call_tool(68, "stop_run", json!({"run_id": run_id}));
+    assert_eq!(stopped["result"]["structuredContent"]["status"], "stopped");
+    assert_eq!(
+        stopped["result"]["structuredContent"]["stop_method"],
+        "forced"
+    );
+    client.finish();
+}
+
 fn assert_elicitation_request(request: &Value, expected_hash: &str) {
     assert_eq!(request["method"], "elicitation/create");
     let params = &request["params"];
@@ -606,6 +708,16 @@ impl ExecutionMcpClient {
         let id = self.next_request_id;
         self.next_request_id += 1;
         self.send_execute(plan_id, expected_hash, id);
+        self.read_response(id)
+    }
+
+    fn call_tool(&mut self, id: u64, name: &str, arguments: Value) -> Value {
+        self.send(json!({
+            "jsonrpc": "2.0",
+            "id": id,
+            "method": "tools/call",
+            "params": {"name": name, "arguments": arguments}
+        }));
         self.read_response(id)
     }
 

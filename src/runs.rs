@@ -112,12 +112,14 @@ impl RunControlService {
             LogStream::Stderr => (&record.stderr_path, "stderr.log"),
         };
         let expected = run_directory.join(expected_name);
-        if recorded != &expected {
-            return Err(RunControlError::UnsafeLogPath);
-        }
         let canonical_directory =
             fs::canonicalize(&run_directory).map_err(|source| RunControlError::LogIo {
                 path: run_directory.clone(),
+                source,
+            })?;
+        let canonical_expected =
+            fs::canonicalize(&expected).map_err(|source| RunControlError::LogIo {
+                path: expected,
                 source,
             })?;
         let canonical_log =
@@ -125,7 +127,7 @@ impl RunControlService {
                 path: recorded.clone(),
                 source,
             })?;
-        if !canonical_log.starts_with(&canonical_directory) {
+        if canonical_log != canonical_expected || !canonical_log.starts_with(&canonical_directory) {
             return Err(RunControlError::UnsafeLogPath);
         }
         read_log_tail(&canonical_log, &self.redaction_patterns)
