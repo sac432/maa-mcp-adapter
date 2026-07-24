@@ -662,35 +662,35 @@ pub struct RunRecord {
 
 ### 要完成的任务
 
-- [ ] **任务 6.1：实现全局活动任务锁**
+- [x] **任务 6.1：实现全局活动任务锁**
 
-  通过 `locks/active-run.lock` 的原子 `create_new` 获取锁。锁内记录 `run_id`；启动时必须结合运行记录和进程身份判断锁是否仍有效。
+  通过 `locks/active-run.lock` 的原子 `create_new` 获取锁。锁内记录 `run_id`；锁有效性的重启判断由任务 7.6 结合运行记录和进程身份完成。
 
-- [ ] **任务 6.2：实现 MCP elicitation**
+- [x] **任务 6.2：实现 MCP elicitation**
 
   `execute_daily_plan` 只接受 `plan_id` 和 `expected_plan_hash`。服务器重新加载计划、验证状态并展示规范摘要，请求单一布尔确认。
 
-- [ ] **任务 6.3：处理 elicitation 三种结果**
+- [x] **任务 6.3：处理 elicitation 三种结果**
 
   `accept` 继续；`decline` 返回未执行结果；`cancel` 返回取消结果。客户端未声明 elicitation capability 时返回 `CLIENT_ELICITATION_UNSUPPORTED`。
 
-- [ ] **任务 6.4：执行最终一致性检查**
+- [x] **任务 6.4：执行最终一致性检查**
 
   elicitation 返回后重新加载计划、检查 revision、重新验证安全策略、重新生成摘要及哈希。任一值变化则返回 `PLAN_CHANGED`，不创建进程。
 
-- [ ] **任务 6.5：创建后台进程**
+- [x] **任务 6.5：创建后台进程**
 
   打开 stdout/stderr 文件后，使用直接路径和参数数组创建 `maa-cli`。Windows 上设置独立进程组和分离标志，不继承 MCP 的 STDIO。
 
-- [ ] **任务 6.6：持久化运行记录**
+- [x] **任务 6.6：持久化运行记录**
 
   记录 PID、进程创建时间、任务文件哈希、路径和时间戳后才返回 `run_id`。记录失败时必须终止刚创建且身份匹配的进程。
 
-- [ ] **任务 6.7：覆盖竞态与失败路径**
+- [x] **任务 6.7：覆盖竞态与失败路径**
 
   测试两个并发执行请求、确认期间计划改变、dry-run 后文件改变、进程创建失败和记录写入失败。
 
-- [ ] **任务 6.8：提交阶段成果**
+- [x] **任务 6.8：提交阶段成果**
 
 ```text
 git add src/domain/run.rs src/storage/runs.rs src/maa_cli/process.rs src/tools/runs.rs tests/execution_flow.rs
@@ -699,13 +699,24 @@ git commit -m "feat: confirm and launch daily plans"
 
 ### 阶段验收标准
 
-- [ ] 未预览、哈希错误、缺少 elicitation 或用户拒绝时不启动进程。
-- [ ] 相同计划的两个并发执行请求最多一个成功。
-- [ ] Agent 无法在确认后追加、删除或修改任务。
-- [ ] MCP Server 退出后 fake maa 子进程继续运行。
-- [ ] 返回结果包含 `run_id`、PID、初始状态、摘要和日志位置。
-- [ ] 所有错误路径都不静默重试副作用。
-- [ ] 三条必需 Cargo 检查全部通过。
+- [x] 未预览、哈希错误、缺少 elicitation 或用户拒绝时不启动进程。
+- [x] 相同计划的两个并发执行请求最多一个成功。
+- [x] Agent 无法在确认后追加、删除或修改任务。
+- [x] MCP Server 退出后 fake maa 子进程继续运行。
+- [x] 返回结果包含 `run_id`、PID、初始状态、摘要和日志位置。
+- [x] 所有错误路径都不静默重试副作用。
+- [x] 三条必需 Cargo 检查全部通过。
+
+### 阶段审查记录
+
+- 实现提交：`92d1fa4 feat: confirm and launch daily plans`
+- TDD RED：先固定 Ready 状态和准确哈希要求，再覆盖原子活动锁、两个并发启动、确认期间计划变化、dry-run 后任务文件变化、进程创建失败、运行记录写入失败、缺失 elicitation 能力以及 accept/decline/cancel 三种协议结果。
+- TDD GREEN：`execute_daily_plan` 只接受 `plan_id` 和 `expected_plan_hash`；以规范中文摘要和哈希请求单一布尔确认；接受后重新加载并逐项核对 state、revision、策略、摘要与哈希，随后才探测环境、生成任务并创建后台进程。
+- 进程与持久化：Windows 后台进程使用参数数组、独立进程组和分离标志；MCP STDIO 句柄禁止继承；运行记录包含 PID、创建时间、任务 SHA-256、绝对路径和启动时间，记录失败时只终止身份完全匹配的进程。
+- 审查修正：为 `rmcp` 启用既有 `schemars` 功能以生成 elicitation 表单；补充 Windows `SYNCHRONIZE` 访问以等待精确终止；补充最终摘要重生成比较，防止确认快照与实际执行摘要脱节。
+- 自动验证：根 crate 与 fake 夹具格式检查、`cargo build --all-targets`、严格 clippy 和全量 `cargo test --all-targets --all-features` 全部通过；测试计数为 2 个单元测试、16 个环境测试、24 个计划/存储/服务测试、12 个执行流测试、4 个 stdio 协议测试和 7 个任务文件测试，共 65 项。
+- 人工环境阻塞：本机仍未发现真实 `maa.exe`/`maa-cli.exe`；未启动真实游戏或账号日常，真实 MAA dry-run 和执行仍保留为阶段 8 的人工验收。
+- 最终结论：自动化范围内无 Critical 或 Important 遗留问题；阶段 6 可以进入阶段 7，活动锁的重启有效性判断按任务 7.6 完成。
 
 ---
 
