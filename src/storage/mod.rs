@@ -8,7 +8,9 @@ mod repository;
 mod runs;
 
 pub use repository::{FilePlanRepository, PlanRepository};
-pub use runs::{ActiveRunLock, FileRunRepository, RunRepository, release_active_run_lock};
+pub use runs::{
+    ActiveRunLock, FileRunRepository, RunRepository, active_run_id, release_active_run_lock,
+};
 
 #[derive(Debug, Error)]
 pub enum StorageError {
@@ -34,6 +36,10 @@ pub enum StorageError {
     RunNotFound,
     #[error("run record id does not match its path")]
     MismatchedRunId,
+    #[error("run revision conflict: expected {expected}, actual {actual}")]
+    RunRevisionConflict { expected: u64, actual: u64 },
+    #[error("replacement run revision must be {expected}, got {actual}")]
+    InvalidNextRunRevision { expected: u64, actual: u64 },
     #[error("run task hash must be 64 lowercase hexadecimal characters")]
     InvalidTaskHash,
     #[error("an active run lock already exists")]

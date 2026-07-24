@@ -9,6 +9,15 @@ use thiserror::Error;
 pub struct AdapterConfig {
     pub maa_executable: Option<PathBuf>,
     pub state_directory: Option<PathBuf>,
+    pub retention_days: Option<u16>,
+    #[serde(default)]
+    pub redaction_patterns: Vec<String>,
+}
+
+impl AdapterConfig {
+    pub fn retention_days(&self) -> u16 {
+        self.retention_days.unwrap_or(7)
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

@@ -9,7 +9,7 @@ use serde::Serialize;
 use serde::de::DeserializeOwned;
 use serde_json::Value;
 
-use crate::domain::{DailyTask, PlanId, PlanState};
+use crate::domain::{DailyTask, PlanId, PlanState, RunId};
 use crate::planning::hash::hash_plan;
 use crate::planning::service::{PlanService, PlanView, ServiceError};
 use crate::planning::{MissingField, TaskKind, ValidationError};
@@ -74,6 +74,15 @@ impl ToolError {
             "计划 ID 无效。",
             Vec::new(),
             vec!["使用 create_daily_plan 返回的 plan_id。".to_owned()],
+        )
+    }
+
+    pub fn invalid_run_id() -> Self {
+        Self::new(
+            "INVALID_RUN_ID",
+            "运行 ID 无效。",
+            Vec::new(),
+            vec!["使用 execute_daily_plan 返回的 run_id。".to_owned()],
         )
     }
 
@@ -147,6 +156,13 @@ impl ToolError {
                 Vec::new(),
                 vec!["使用 execute_daily_plan 返回的 run_id。".to_owned()],
             ),
+            StorageError::RunRevisionConflict { .. }
+            | StorageError::InvalidNextRunRevision { .. } => Self::new(
+                "RUN_CHANGED",
+                "运行状态已被另一个操作更新。",
+                Vec::new(),
+                vec!["重新调用 get_run_status 后再决定下一步。".to_owned()],
+            ),
             StorageError::ActiveRunExists => Self::new(
                 "ACTIVE_RUN_EXISTS",
                 "已有活动中的 MAA 任务。",
@@ -197,6 +213,10 @@ pub fn parse_arguments<T: DeserializeOwned>(arguments: JsonObject) -> Result<T, 
 
 pub fn parse_plan_id(value: &str) -> Result<PlanId, Json<ToolError>> {
     PlanId::from_str(value).map_err(|_| Json(ToolError::invalid_plan_id()))
+}
+
+pub fn parse_run_id(value: &str) -> Result<RunId, Json<ToolError>> {
+    RunId::from_str(value).map_err(|_| Json(ToolError::invalid_run_id()))
 }
 
 #[derive(Debug, Clone, Serialize, JsonSchema)]

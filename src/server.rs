@@ -13,7 +13,10 @@ use crate::tools::environment::{
 use crate::tools::plans::{
     CancelDailyPlanInput, CreateDailyPlanInput, PreviewDailyPlanInput, UpdateDailyPlanInput,
 };
-use crate::tools::runs::{ExecuteDailyPlanInput, ExecuteDailyPlanOutput};
+use crate::tools::runs::{
+    ExecuteDailyPlanInput, ExecuteDailyPlanOutput, GetRunLogInput, GetRunLogOutput,
+    GetRunStatusInput, RunStatusOutput, StopRunInput,
+};
 use crate::tools::{PlanViewOutput, SharedRuntime, ToolError, ToolResult, parse_arguments};
 
 const SERVER_INSTRUCTIONS: &str = "\
@@ -47,8 +50,22 @@ impl Default for AdapterServer {
 #[tool_router(router = tool_router)]
 impl AdapterServer {
     fn new() -> Self {
+        let runtime = std::sync::Arc::new(AdapterRuntime::from_environment());
+        if let Ok(state_directory) = runtime.state_directory() {
+            let _ = crate::runs::recover_active_run(state_directory);
+            if let Ok(repository) =
+                crate::storage::FileRunRepository::new(state_directory.to_path_buf())
+            {
+                let now = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .map_or(0, |duration| duration.as_millis() as u64);
+                let retention_days = runtime.config().map_or(7, |config| config.retention_days());
+                let retention_ms = u64::from(retention_days) * 24 * 60 * 60 * 1_000;
+                let _ = repository.cleanup_terminal(now, retention_ms);
+            }
+        }
         Self {
-            runtime: std::sync::Arc::new(AdapterRuntime::from_environment()),
+            runtime,
             tool_router: Self::tool_router(),
         }
     }
@@ -192,6 +209,57 @@ impl AdapterServer {
     ) -> ToolResult<ExecuteDailyPlanOutput> {
         let input = parse_arguments(arguments)?;
         crate::tools::runs::execute_daily_plan(&self.runtime, input, peer).await
+    }
+
+    #[tool(
+        name = "get_run_status",
+        description = "核对持久化运行记录并返回当前 MAA 任务状态。",
+        input_schema = schema_for_type::<GetRunStatusInput>(),
+        annotations(
+            title = "查询运行状态",
+            read_only_hint = true,
+            destructive_hint = false,
+            idempotent_hint = true,
+            open_world_hint = false
+        )
+    )]
+    fn get_run_status(&self, arguments: rmcp::model::JsonObject) -> ToolResult<RunStatusOutput> {
+        let input = parse_arguments(arguments)?;
+        crate::tools::runs::get_run_status(&self.runtime, input)
+    }
+
+    #[tool(
+        name = "get_run_log",
+        description = "读取记录内 stdout 或 stderr 的受限、脱敏尾部内容。",
+        input_schema = schema_for_type::<GetRunLogInput>(),
+        annotations(
+            title = "读取受限运行日志",
+            read_only_hint = true,
+            destructive_hint = false,
+            idempotent_hint = true,
+            open_world_hint = false
+        )
+    )]
+    fn get_run_log(&self, arguments: rmcp::model::JsonObject) -> ToolResult<GetRunLogOutput> {
+        let input = parse_arguments(arguments)?;
+        crate::tools::runs::get_run_log(&self.runtime, input)
+    }
+
+    #[tool(
+        name = "stop_run",
+        description = "仅在 PID 与创建时间匹配时先请求优雅停止，再强制终止对应命名 Job。",
+        input_schema = schema_for_type::<StopRunInput>(),
+        annotations(
+            title = "停止运行任务",
+            read_only_hint = false,
+            destructive_hint = true,
+            idempotent_hint = false,
+            open_world_hint = true
+        )
+    )]
+    async fn stop_run(&self, arguments: rmcp::model::JsonObject) -> ToolResult<RunStatusOutput> {
+        let input = parse_arguments(arguments)?;
+        crate::tools::runs::stop_run(&self.runtime, input).await
     }
 }
 

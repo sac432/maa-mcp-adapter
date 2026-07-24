@@ -53,12 +53,20 @@ pub enum RunStatus {
     Unknown,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum StopMethod {
+    Graceful,
+    Forced,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct RunRecord {
     pub run_id: RunId,
     pub plan_id: PlanId,
     pub plan_hash: PlanHash,
+    pub revision: u64,
     pub pid: u32,
     pub process_start_identity: ProcessStartIdentity,
     pub task_path: PathBuf,
@@ -66,5 +74,8 @@ pub struct RunRecord {
     pub stdout_path: PathBuf,
     pub stderr_path: PathBuf,
     pub status: RunStatus,
+    pub exit_code: Option<i32>,
+    pub stop_method: Option<StopMethod>,
     pub started_at_unix_ms: u64,
+    pub finished_at_unix_ms: Option<u64>,
 }

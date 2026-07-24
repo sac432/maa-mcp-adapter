@@ -369,6 +369,7 @@ impl MaaCliAdapter {
 
     pub fn launch_generated_task(
         &self,
+        run_id: &RunId,
         artifact: &TaskFileArtifact,
         stdout_path: &Path,
         stderr_path: &Path,
@@ -382,6 +383,7 @@ impl MaaCliAdapter {
             OsString::from(&artifact.profile),
         ];
         Ok(process::spawn_background(
+            run_id,
             &self.executable,
             &args,
             stdout_path,

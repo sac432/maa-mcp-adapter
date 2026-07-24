@@ -21,6 +21,7 @@ fn explicit_absolute_executable_takes_priority_over_path() {
     let config = AdapterConfig {
         maa_executable: Some(explicit.clone()),
         state_directory: None,
+        ..AdapterConfig::default()
     };
     let search_path = OsString::from(path_dir);
 
@@ -83,6 +84,7 @@ fn explicit_executable_must_be_absolute() {
     let config = AdapterConfig {
         maa_executable: Some("relative/maa.exe".into()),
         state_directory: None,
+        ..AdapterConfig::default()
     };
 
     let result = config.resolve_maa_executable(Some(OsString::new().as_os_str()));
@@ -100,6 +102,7 @@ fn explicit_executable_must_exist() {
     let config = AdapterConfig {
         maa_executable: Some(missing.clone()),
         state_directory: None,
+        ..AdapterConfig::default()
     };
 
     let result = config.resolve_maa_executable(None);
@@ -116,6 +119,7 @@ fn explicit_executable_must_be_a_file() {
     let config = AdapterConfig {
         maa_executable: Some(temp.path().to_path_buf()),
         state_directory: None,
+        ..AdapterConfig::default()
     };
 
     let result = config.resolve_maa_executable(None);

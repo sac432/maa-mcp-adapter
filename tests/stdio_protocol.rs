@@ -8,6 +8,12 @@ use std::{
 use serde_json::{Value, json};
 use tempfile::TempDir;
 
+use maa_mcp_adapter::domain::{
+    DailyPlan, DailyTask, InfrastPlan, ProcessStartIdentity, RunId, RunRecord, RunStatus,
+};
+use maa_mcp_adapter::planning::hash::hash_plan;
+use maa_mcp_adapter::storage::{FileRunRepository, RunRepository};
+
 #[test]
 fn stdio_server_initializes_and_lists_tools() {
     let mut child = Command::new(env!("CARGO_BIN_EXE_maa-mcp-adapter"))
@@ -100,7 +106,10 @@ fn stdio_server_initializes_and_lists_tools() {
             "create_daily_plan",
             "execute_daily_plan",
             "get_daily_options",
+            "get_run_log",
+            "get_run_status",
             "preview_daily_plan",
+            "stop_run",
             "update_daily_plan",
         ]
     );
@@ -116,7 +125,7 @@ fn stdio_server_initializes_and_lists_tools() {
             tool["inputSchema"]["additionalProperties"], false,
             "top-level input must reject unknown fields: {tool}"
         );
-        if tool["name"] != "execute_daily_plan" {
+        if tool["name"] != "execute_daily_plan" && tool["name"] != "stop_run" {
             assert_eq!(
                 tool["annotations"]["openWorldHint"], false,
                 "planning tools must not access the open world: {tool}"
@@ -160,6 +169,26 @@ fn stdio_server_initializes_and_lists_tools() {
     assert_eq!(execute["annotations"]["destructiveHint"], true);
     assert_eq!(execute["annotations"]["idempotentHint"], false);
     assert_eq!(execute["annotations"]["openWorldHint"], true);
+
+    for name in ["get_run_status", "get_run_log"] {
+        let tool = listed_tools
+            .iter()
+            .find(|tool| tool["name"] == name)
+            .expect("run query tool");
+        assert_eq!(tool["annotations"]["readOnlyHint"], true);
+        assert_eq!(tool["annotations"]["destructiveHint"], false);
+        assert_eq!(tool["annotations"]["idempotentHint"], true);
+        assert_eq!(tool["annotations"]["openWorldHint"], false);
+    }
+
+    let stop = listed_tools
+        .iter()
+        .find(|tool| tool["name"] == "stop_run")
+        .expect("stop tool");
+    assert_eq!(stop["annotations"]["readOnlyHint"], false);
+    assert_eq!(stop["annotations"]["destructiveHint"], true);
+    assert_eq!(stop["annotations"]["idempotentHint"], false);
+    assert_eq!(stop["annotations"]["openWorldHint"], true);
 
     for name in [
         "update_daily_plan",
@@ -404,6 +433,74 @@ fn invalid_config_is_reported_without_starting_planning() {
                 .is_some_and(|value| value.contains("config.toml")))
     );
 
+    client.finish();
+}
+
+#[test]
+fn run_tools_return_strict_status_bounded_log_and_safe_stop_error() {
+    let mut client =
+        McpClient::spawn_with_config(Some("redaction_patterns = [\"secret-value\"]\n"));
+    client.initialize();
+    let state = client._data.path().join("maa-mcp-adapter");
+    let run_id = RunId::new();
+    let run_directory = state.join("runs").join(run_id.to_string());
+    std::fs::create_dir_all(&run_directory).expect("run directory");
+    std::fs::write(
+        run_directory.join("stdout.log"),
+        "visible token=secret-value\n",
+    )
+    .expect("stdout");
+    std::fs::write(run_directory.join("stderr.log"), "").expect("stderr");
+    let plan = DailyPlan::new("default", vec![DailyTask::Infrast(InfrastPlan {})]);
+    let record = RunRecord {
+        run_id,
+        plan_id: plan.plan_id,
+        plan_hash: hash_plan(&plan).expect("plan hash"),
+        revision: 0,
+        pid: 42,
+        process_start_identity: ProcessStartIdentity {
+            creation_time_100ns: 123,
+        },
+        task_path: run_directory.join("task.toml"),
+        task_sha256: "a".repeat(64),
+        stdout_path: run_directory.join("stdout.log"),
+        stderr_path: run_directory.join("stderr.log"),
+        status: RunStatus::Succeeded,
+        exit_code: Some(0),
+        stop_method: None,
+        started_at_unix_ms: 1_000,
+        finished_at_unix_ms: Some(2_000),
+    };
+    FileRunRepository::new(state)
+        .expect("run repository")
+        .create(&record)
+        .expect("record");
+
+    let status = client.call(40, "get_run_status", json!({"run_id": run_id.to_string()}));
+    let status = &status["result"]["structuredContent"];
+    assert_eq!(status["status"], "succeeded");
+    assert_eq!(status["exit_code"], 0);
+
+    let log = client.call(
+        41,
+        "get_run_log",
+        json!({"run_id": run_id.to_string(), "stream": "stdout"}),
+    );
+    let log = &log["result"]["structuredContent"];
+    assert_eq!(log["stream"], "stdout");
+    assert_eq!(log["content"], "visible token=[REDACTED]");
+    assert_eq!(log["lines"], 1);
+
+    let stop = client.call(42, "stop_run", json!({"run_id": run_id.to_string()}));
+    assert_tool_error(&stop, "RUN_NOT_RUNNING");
+    let invalid = client.call(43, "get_run_status", json!({"run_id": "invalid"}));
+    assert_tool_error(&invalid, "INVALID_RUN_ID");
+    let unknown = client.call(
+        44,
+        "get_run_log",
+        json!({"run_id": run_id.to_string(), "stream": "stdout", "extra": true}),
+    );
+    assert_tool_error(&unknown, "INVALID_ARGUMENTS");
     client.finish();
 }
 

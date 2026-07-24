@@ -35,6 +35,7 @@ fn run_record_round_trips_with_strict_identity_and_paths() {
         run_id,
         plan_id: plan.plan_id,
         plan_hash: hash_plan(&plan).expect("plan hash"),
+        revision: 0,
         pid: 42,
         process_start_identity: ProcessStartIdentity {
             creation_time_100ns: 123_456,
@@ -44,7 +45,10 @@ fn run_record_round_trips_with_strict_identity_and_paths() {
         stdout_path: run_directory.join("stdout.log"),
         stderr_path: run_directory.join("stderr.log"),
         status: RunStatus::Running,
+        exit_code: None,
+        stop_method: None,
         started_at_unix_ms: 1_700_000_000_000,
+        finished_at_unix_ms: None,
     };
     let repository = FileRunRepository::new(state).expect("run repository");
 
@@ -308,7 +312,7 @@ fn background_spawn_failure_returns_no_process() {
     let stderr = temp.path().join("stderr.log");
     let missing = temp.path().join("missing-maa.exe");
 
-    let result = spawn_background(&missing, &[], &stdout, &stderr);
+    let result = spawn_background(&RunId::new(), &missing, &[], &stdout, &stderr);
 
     assert!(matches!(result, Err(ProcessError::Spawn(_))));
 }

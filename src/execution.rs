@@ -9,7 +9,7 @@ use crate::maa_cli::{MaaCliAdapter, MaaCliError};
 use crate::planning::hash::hash_plan;
 use crate::planning::service::PlanService;
 use crate::planning::summary::summarize_plan;
-use crate::platform::{PlatformError, terminate_if_matches};
+use crate::platform::{PlatformError, process_identity_matches, terminate_job, wait_for_exit};
 use crate::storage::{
     ActiveRunLock, FilePlanRepository, FileRunRepository, PlanRepository, RunRepository,
     StorageError,
@@ -180,17 +180,19 @@ impl ExecutionService {
             self.rollback_confirmed(prepared, confirmed_revision);
             return Err(error);
         }
-        let spawned = match adapter.launch_generated_task(&artifact, &stdout_path, &stderr_path) {
-            Ok(spawned) => spawned,
-            Err(error) => {
-                self.mark_running_failed(prepared);
-                return Err(error.into());
-            }
-        };
+        let spawned =
+            match adapter.launch_generated_task(&run_id, &artifact, &stdout_path, &stderr_path) {
+                Ok(spawned) => spawned,
+                Err(error) => {
+                    self.mark_running_failed(prepared);
+                    return Err(error.into());
+                }
+            };
         let record = RunRecord {
             run_id,
             plan_id: *prepared.plan_id(),
             plan_hash: prepared.plan_hash().clone(),
+            revision: 0,
             pid: spawned.pid(),
             process_start_identity: spawned.identity(),
             task_path: artifact.path().to_path_buf(),
@@ -198,7 +200,10 @@ impl ExecutionService {
             stdout_path,
             stderr_path,
             status: RunStatus::Running,
+            exit_code: None,
+            stop_method: None,
             started_at_unix_ms,
+            finished_at_unix_ms: None,
         };
         if let Err(error) = run_repository.create(&record) {
             self.mark_running_failed(prepared);
@@ -206,10 +211,10 @@ impl ExecutionService {
         }
         if let Err(error) = active_lock.commit() {
             self.mark_running_failed(prepared);
-            terminate_if_matches(spawned.pid(), spawned.identity())?;
+            self.terminate_spawned_job(run_id, spawned.pid(), spawned.identity())?;
             return Err(error.into());
         }
-        spawned.detach();
+        crate::runs::monitor_child(self.state_directory.clone(), spawned, record.run_id);
         Ok(LaunchedExecution {
             record,
             summary: prepared.summary.clone(),
@@ -363,12 +368,35 @@ impl ExecutionService {
         spawned: crate::maa_cli::process::BackgroundProcess,
         original: ExecutionError,
     ) -> Result<LaunchedExecution, ExecutionError> {
-        if let Err(error) = terminate_if_matches(spawned.pid(), spawned.identity()) {
+        if let Err(error) = self.terminate_spawned_job(
+            spawned_run_id(&active_lock),
+            spawned.pid(),
+            spawned.identity(),
+        ) {
             let _ = active_lock.commit();
             return Err(ExecutionError::RollbackFailed(error));
         }
         Err(original)
     }
+
+    fn terminate_spawned_job(
+        &self,
+        run_id: RunId,
+        pid: u32,
+        identity: crate::domain::ProcessStartIdentity,
+    ) -> Result<(), PlatformError> {
+        if !process_identity_matches(pid, identity)? {
+            return Err(PlatformError::IdentityMismatch);
+        }
+        terminate_job(&run_id, 1)?;
+        wait_for_exit(pid, identity, std::time::Duration::from_secs(5))?
+            .ok_or(PlatformError::TerminationTimeout)?;
+        Ok(())
+    }
+}
+
+fn spawned_run_id(lock: &ActiveRunLock) -> RunId {
+    lock.run_id()
 }
 
 fn is_plan_hash(value: &str) -> bool {

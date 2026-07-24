@@ -6,8 +6,9 @@ use serde::{Deserialize, Serialize};
 use crate::config::ConfigError;
 use crate::execution::{ExecutionError, ExecutionService};
 use crate::maa_cli::MaaCliAdapter;
+use crate::runs::{LogStream, RunControlError, RunControlService};
 
-use super::{SharedRuntime, ToolError, ToolResult, parse_plan_id, path_search_value};
+use super::{SharedRuntime, ToolError, ToolResult, parse_plan_id, parse_run_id, path_search_value};
 
 #[derive(Debug, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
@@ -26,6 +27,56 @@ pub struct ExecuteDailyPlanOutput {
     pub summary: String,
     pub stdout_path: Option<String>,
     pub stderr_path: Option<String>,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct GetRunStatusInput {
+    pub run_id: String,
+}
+
+#[derive(Debug, Serialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct RunStatusOutput {
+    pub run_id: String,
+    pub plan_id: String,
+    pub status: String,
+    pub pid: u32,
+    pub exit_code: Option<i32>,
+    pub stop_method: Option<String>,
+    pub started_at_unix_ms: u64,
+    pub finished_at_unix_ms: Option<u64>,
+}
+
+#[derive(Debug, Clone, Copy, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum LogStreamInput {
+    Stdout,
+    Stderr,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct GetRunLogInput {
+    pub run_id: String,
+    pub stream: LogStreamInput,
+}
+
+#[derive(Debug, Serialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct GetRunLogOutput {
+    pub run_id: String,
+    pub stream: String,
+    pub content: String,
+    pub lines: usize,
+    pub bytes: usize,
+    pub truncated: bool,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct StopRunInput {
+    pub run_id: String,
 }
 
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
@@ -112,6 +163,93 @@ pub async fn execute_daily_plan(
     }))
 }
 
+pub fn get_run_status(
+    runtime: &SharedRuntime,
+    input: GetRunStatusInput,
+) -> ToolResult<RunStatusOutput> {
+    let run_id = parse_run_id(&input.run_id)?;
+    let service = run_control(runtime)?;
+    let record = service
+        .get_status(&run_id)
+        .map_err(ToolError::from_run_control)
+        .map_err(rmcp::Json)?;
+    Ok(rmcp::Json(status_output(record)))
+}
+
+pub fn get_run_log(runtime: &SharedRuntime, input: GetRunLogInput) -> ToolResult<GetRunLogOutput> {
+    let run_id = parse_run_id(&input.run_id)?;
+    let service = run_control(runtime)?;
+    let stream = match input.stream {
+        LogStreamInput::Stdout => LogStream::Stdout,
+        LogStreamInput::Stderr => LogStream::Stderr,
+    };
+    let tail = service
+        .get_log(&run_id, stream)
+        .map_err(ToolError::from_run_control)
+        .map_err(rmcp::Json)?;
+    Ok(rmcp::Json(GetRunLogOutput {
+        run_id: run_id.to_string(),
+        stream: match stream {
+            LogStream::Stdout => "stdout",
+            LogStream::Stderr => "stderr",
+        }
+        .to_owned(),
+        content: tail.content,
+        lines: tail.lines.len(),
+        bytes: tail.bytes,
+        truncated: tail.truncated,
+    }))
+}
+
+pub async fn stop_run(runtime: &SharedRuntime, input: StopRunInput) -> ToolResult<RunStatusOutput> {
+    let run_id = parse_run_id(&input.run_id)?;
+    let service = run_control(runtime)?;
+    let record = tokio::task::spawn_blocking(move || {
+        service.stop(&run_id, std::time::Duration::from_secs(10))
+    })
+    .await
+    .map_err(|_| {
+        rmcp::Json(ToolError::new(
+            "STOP_TASK_FAILED",
+            "停止任务的内部工作线程失败。",
+            Vec::new(),
+            vec!["重新查询运行状态；不要在状态未知时启动新任务。".to_owned()],
+        ))
+    })?
+    .map_err(ToolError::from_run_control)
+    .map_err(rmcp::Json)?;
+    Ok(rmcp::Json(status_output(record)))
+}
+
+fn run_control(runtime: &SharedRuntime) -> Result<RunControlService, rmcp::Json<ToolError>> {
+    let state = runtime
+        .state_directory()
+        .map_err(ToolError::from_runtime)
+        .map_err(rmcp::Json)?;
+    let patterns = runtime
+        .config()
+        .map_err(ToolError::from_runtime)
+        .map_err(rmcp::Json)?
+        .redaction_patterns
+        .clone();
+    Ok(RunControlService::new(state.to_path_buf(), patterns))
+}
+
+fn status_output(record: crate::domain::RunRecord) -> RunStatusOutput {
+    RunStatusOutput {
+        run_id: record.run_id.to_string(),
+        plan_id: record.plan_id.to_string(),
+        status: format!("{:?}", record.status).to_ascii_lowercase(),
+        pid: record.pid,
+        exit_code: record.exit_code,
+        stop_method: record
+            .stop_method
+            .map(|method| format!("{method:?}").to_ascii_lowercase()),
+        started_at_unix_ms: record.started_at_unix_ms,
+        finished_at_unix_ms: record.finished_at_unix_ms,
+    }
+}
+
 fn not_started(outcome: &str, summary: &str) -> ExecuteDailyPlanOutput {
     ExecuteDailyPlanOutput {
         outcome: outcome.to_owned(),
@@ -187,5 +325,41 @@ impl ToolError {
             ),
         };
         Self::new(code, message, Vec::new(), vec![recovery.to_owned()])
+    }
+
+    pub fn from_run_control(error: RunControlError) -> Self {
+        match error {
+            RunControlError::Storage(error) => Self::from_service_storage(error),
+            RunControlError::UnsafeLogPath => Self::new(
+                "UNSAFE_LOG_PATH",
+                "运行记录中的日志路径不安全。",
+                Vec::new(),
+                vec!["保留状态目录并人工检查该运行记录。".to_owned()],
+            ),
+            RunControlError::LogIo { .. } => Self::new(
+                "RUN_LOG_UNAVAILABLE",
+                "无法安全读取所选运行日志。",
+                Vec::new(),
+                vec!["检查日志文件是否仍存在且可读。".to_owned()],
+            ),
+            RunControlError::ProcessIdentityMismatch => Self::new(
+                "PROCESS_IDENTITY_MISMATCH",
+                "PID 已被复用或不再对应记录中的进程。",
+                Vec::new(),
+                vec!["不要重试停止；保留活动锁并人工检查。".to_owned()],
+            ),
+            RunControlError::NotRunning => Self::new(
+                "RUN_NOT_RUNNING",
+                "该运行当前不处于 Running 状态。",
+                Vec::new(),
+                vec!["调用 get_run_status 获取当前终态。".to_owned()],
+            ),
+            RunControlError::Platform(_) => Self::new(
+                "PROCESS_CONTROL_FAILED",
+                "Windows 无法安全查询或停止记录中的进程。",
+                Vec::new(),
+                vec!["不要启动新任务；保留活动锁并人工检查。".to_owned()],
+            ),
+        }
     }
 }

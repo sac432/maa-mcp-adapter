@@ -1,17 +1,25 @@
+use std::os::windows::ffi::OsStrExt;
 use std::os::windows::io::AsRawHandle;
 use std::process::Child;
+use std::time::Duration;
+use std::{ffi::OsStr, ptr};
 
 use thiserror::Error;
 use windows_sys::Win32::Foundation::{
-    CloseHandle, FILETIME, HANDLE, HANDLE_FLAG_INHERIT, INVALID_HANDLE_VALUE, STILL_ACTIVE,
-    SetHandleInformation, WAIT_OBJECT_0,
+    CloseHandle, DUPLICATE_SAME_ACCESS, DuplicateHandle, FILETIME, HANDLE, HANDLE_FLAG_INHERIT,
+    INVALID_HANDLE_VALUE, STILL_ACTIVE, SetHandleInformation, WAIT_OBJECT_0, WAIT_TIMEOUT,
 };
 use windows_sys::Win32::System::Console::{
-    GetStdHandle, STD_ERROR_HANDLE, STD_INPUT_HANDLE, STD_OUTPUT_HANDLE,
+    CTRL_BREAK_EVENT, GenerateConsoleCtrlEvent, GetStdHandle, STD_ERROR_HANDLE, STD_INPUT_HANDLE,
+    STD_OUTPUT_HANDLE,
 };
+use windows_sys::Win32::System::JobObjects::{
+    AssignProcessToJobObject, CreateJobObjectW, OpenJobObjectW, TerminateJobObject,
+};
+use windows_sys::Win32::System::SystemServices::JOB_OBJECT_TERMINATE;
 use windows_sys::Win32::System::Threading::{
-    GetExitCodeProcess, GetProcessTimes, OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION,
-    PROCESS_TERMINATE, TerminateProcess, WaitForSingleObject,
+    GetCurrentProcess, GetExitCodeProcess, GetProcessTimes, OpenProcess,
+    PROCESS_QUERY_LIMITED_INFORMATION, PROCESS_TERMINATE, TerminateProcess, WaitForSingleObject,
 };
 
 use crate::domain::ProcessStartIdentity;
@@ -26,6 +34,8 @@ pub enum PlatformError {
     IdentityMismatch,
     #[error("terminated process did not exit within the safety timeout")]
     TerminationTimeout,
+    #[error("named run job already exists")]
+    JobAlreadyExists,
 }
 
 pub fn harden_stdio_inheritance() -> Result<(), PlatformError> {
@@ -46,6 +56,104 @@ pub fn harden_stdio_inheritance() -> Result<(), PlatformError> {
 pub fn process_identity_for_child(child: &Child) -> Result<ProcessStartIdentity, PlatformError> {
     let handle = child.as_raw_handle().cast();
     identity_from_handle(handle)
+}
+
+pub fn assign_new_job(run_id: &crate::domain::RunId, child: &Child) -> Result<(), PlatformError> {
+    let name = job_name(run_id);
+    // SAFETY: the name is a live NUL-terminated UTF-16 buffer and security attributes are null.
+    let job = unsafe { CreateJobObjectW(ptr::null(), name.as_ptr()) };
+    if job.is_null() {
+        return Err(last_error());
+    }
+    let already_exists = std::io::Error::last_os_error().raw_os_error() == Some(183);
+    if already_exists {
+        close_handle(job);
+        return Err(PlatformError::JobAlreadyExists);
+    }
+    let process = child.as_raw_handle().cast();
+    // SAFETY: both handles are valid for the duration of this call.
+    let assigned = unsafe { AssignProcessToJobObject(job, process) };
+    let result = (|| {
+        if assigned == 0 {
+            return Err(last_error());
+        }
+        let mut remote_job_handle: HANDLE = ptr::null_mut();
+        // SAFETY: source and target process handles are valid. The duplicate intentionally
+        // remains in the child so the named job survives this server process.
+        if unsafe {
+            DuplicateHandle(
+                GetCurrentProcess(),
+                job,
+                process,
+                &mut remote_job_handle,
+                0,
+                0,
+                DUPLICATE_SAME_ACCESS,
+            )
+        } == 0
+        {
+            return Err(last_error());
+        }
+        Ok(())
+    })();
+    close_handle(job);
+    result
+}
+
+pub fn terminate_job(run_id: &crate::domain::RunId, exit_code: u32) -> Result<(), PlatformError> {
+    let name = job_name(run_id);
+    // SAFETY: the name is a live NUL-terminated UTF-16 buffer and inheritance is disabled.
+    let job = unsafe { OpenJobObjectW(JOB_OBJECT_TERMINATE, 0, name.as_ptr()) };
+    if job.is_null() {
+        return Err(last_error());
+    }
+    // SAFETY: job was opened with termination access and remains valid until closed below.
+    let result = if unsafe { TerminateJobObject(job, exit_code) } == 0 {
+        Err(last_error())
+    } else {
+        Ok(())
+    };
+    close_handle(job);
+    result
+}
+
+pub fn request_graceful_stop(pid: u32) -> Result<(), PlatformError> {
+    // SAFETY: pid is the verified process-group id created with CREATE_NEW_PROCESS_GROUP.
+    if unsafe { GenerateConsoleCtrlEvent(CTRL_BREAK_EVENT, pid) } == 0 {
+        Err(last_error())
+    } else {
+        Ok(())
+    }
+}
+
+pub fn wait_for_exit(
+    pid: u32,
+    expected: ProcessStartIdentity,
+    timeout: Duration,
+) -> Result<Option<i32>, PlatformError> {
+    let handle = open_process(pid, PROCESS_QUERY_LIMITED_INFORMATION | SYNCHRONIZE_ACCESS)?;
+    let result = (|| {
+        if identity_from_handle(handle)? != expected {
+            return Err(PlatformError::IdentityMismatch);
+        }
+        let timeout_ms = timeout.as_millis().min(u128::from(u32::MAX)) as u32;
+        // SAFETY: handle remains valid until the surrounding function closes it.
+        match unsafe { WaitForSingleObject(handle, timeout_ms) } {
+            WAIT_OBJECT_0 => {
+                let mut exit_code = 0;
+                // SAFETY: handle is valid and exit_code is writable.
+                if unsafe { GetExitCodeProcess(handle, &mut exit_code) } == 0 {
+                    Err(last_error())
+                } else {
+                    Ok(Some(exit_code as i32))
+                }
+            }
+            WAIT_TIMEOUT => Ok(None),
+            _ => Err(last_error()),
+        }
+    })();
+    close_handle(handle);
+    result
 }
 
 pub fn process_identity_matches(
@@ -126,4 +234,11 @@ fn close_handle(handle: HANDLE) {
 
 fn last_error() -> PlatformError {
     PlatformError::Windows(std::io::Error::last_os_error())
+}
+
+fn job_name(run_id: &crate::domain::RunId) -> Vec<u16> {
+    OsStr::new(&format!("Local\\maa-mcp-adapter-{run_id}"))
+        .encode_wide()
+        .chain(Some(0))
+        .collect()
 }

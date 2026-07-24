@@ -8,8 +8,8 @@ use std::time::Duration;
 use thiserror::Error;
 use tokio::process::Command;
 
-use crate::domain::ProcessStartIdentity;
-use crate::platform::{PlatformError, process_identity_for_child};
+use crate::domain::{ProcessStartIdentity, RunId};
+use crate::platform::{PlatformError, assign_new_job, process_identity_for_child};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ProcessOutput {
@@ -56,6 +56,10 @@ impl BackgroundProcess {
     pub fn detach(self) {
         drop(self);
     }
+
+    pub fn into_child(self) -> std::process::Child {
+        self.child
+    }
 }
 
 pub async fn run(
@@ -85,6 +89,7 @@ pub async fn run(
 }
 
 pub fn spawn_background(
+    run_id: &RunId,
     executable: &Path,
     args: &[OsString],
     stdout_path: &Path,
@@ -118,6 +123,11 @@ pub fn spawn_background(
             return Err(ProcessError::Identity(error));
         }
     };
+    if let Err(error) = assign_new_job(run_id, &child) {
+        let _ = child.kill();
+        let _ = child.wait();
+        return Err(ProcessError::Identity(error));
+    }
     Ok(BackgroundProcess { child, identity })
 }
 
