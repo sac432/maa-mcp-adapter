@@ -8,7 +8,7 @@ repository = "https://github.com/sac432/maa-mcp-adapter"
 description = "Unofficial MCP adapter for MAA"
 
 [dependencies]
-rmcp = { version = "2.2.0", features = ["elicitation", "transport-io"] }
+rmcp = { version = "2.2.0", features = ["elicitation", "schemars", "transport-io"] }
 schemars = "1.2.1"
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.151"
@@ -17,7 +17,12 @@ thiserror = "2.0.19"
 tokio = { version = "1.53.1", features = ["fs", "io-std", "macros", "process", "rt-multi-thread", "sync", "time"] }
 toml = "1.1.3"
 uuid = { version = "1.24.0", features = ["serde", "v4"] }
-windows-sys = { version = "0.61.2", features = ["Win32_Storage_FileSystem"] }
+windows-sys = { version = "0.61.2", features = [
+    "Win32_Foundation",
+    "Win32_Storage_FileSystem",
+    "Win32_System_Console",
+    "Win32_System_Threading",
+] }
 
 [dev-dependencies]
 tempfile = "3.27.0"

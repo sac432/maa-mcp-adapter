@@ -1,5 +1,5 @@
 use rmcp::{
-    Json, ServerHandler, ServiceExt,
+    Json, Peer, RoleServer, ServerHandler, ServiceExt,
     handler::server::{router::tool::ToolRouter, tool::schema_for_type},
     model::{Implementation, ServerCapabilities, ServerInfo},
     tool, tool_handler, tool_router, transport,
@@ -13,6 +13,7 @@ use crate::tools::environment::{
 use crate::tools::plans::{
     CancelDailyPlanInput, CreateDailyPlanInput, PreviewDailyPlanInput, UpdateDailyPlanInput,
 };
+use crate::tools::runs::{ExecuteDailyPlanInput, ExecuteDailyPlanOutput};
 use crate::tools::{PlanViewOutput, SharedRuntime, ToolError, ToolResult, parse_arguments};
 
 const SERVER_INSTRUCTIONS: &str = "\
@@ -171,9 +172,31 @@ impl AdapterServer {
         let input = parse_arguments(arguments)?;
         crate::tools::plans::cancel_daily_plan(&self.runtime, input)
     }
+
+    #[tool(
+        name = "execute_daily_plan",
+        description = "展示与计划哈希绑定的 MCP 二次确认，并在接受后启动唯一的后台 MAA 日常任务。",
+        input_schema = schema_for_type::<ExecuteDailyPlanInput>(),
+        annotations(
+            title = "确认并执行日常计划",
+            read_only_hint = false,
+            destructive_hint = true,
+            idempotent_hint = false,
+            open_world_hint = true
+        )
+    )]
+    async fn execute_daily_plan(
+        &self,
+        arguments: rmcp::model::JsonObject,
+        peer: Peer<RoleServer>,
+    ) -> ToolResult<ExecuteDailyPlanOutput> {
+        let input = parse_arguments(arguments)?;
+        crate::tools::runs::execute_daily_plan(&self.runtime, input, peer).await
+    }
 }
 
 pub async fn serve_stdio() -> AdapterResult<()> {
+    crate::platform::harden_stdio_inheritance()?;
     let service = AdapterServer::new().serve(transport::stdio()).await?;
     service.waiting().await?;
     Ok(())

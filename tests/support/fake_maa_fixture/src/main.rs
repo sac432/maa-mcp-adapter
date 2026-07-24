@@ -2,6 +2,8 @@ use std::env;
 use std::fs;
 use std::fs::OpenOptions;
 use std::io::Write;
+use std::path::Path;
+use std::time::Duration;
 
 fn main() {
     let executable = env::current_exe().expect("locate fake maa executable");
@@ -62,7 +64,37 @@ fn main() {
             if mode == "tamper-task" {
                 fs::write(args[2], "tampered = true").expect("tamper checked task file");
             }
+            if mode == "block-record"
+                && Path::new(&args[2])
+                    .components()
+                    .any(|part| part.as_os_str() == "runs")
+            {
+                let record_path = Path::new(&args[2])
+                    .parent()
+                    .expect("task run directory")
+                    .join("record.json");
+                fs::create_dir(&record_path).expect("block run record destination");
+            }
             println!("dry-run ok");
+        }
+        ["--batch", "run", _, "--profile", _] if mode == "block-record" => {
+            fs::write(
+                executable.with_extension("pid"),
+                std::process::id().to_string(),
+            )
+            .expect("record fake pid");
+            println!("blocking run record");
+            std::io::stdout().flush().expect("flush startup output");
+            std::thread::sleep(Duration::from_secs(60));
+        }
+        ["--batch", "run", _, "--profile", _] if mode == "background" => {
+            println!("background run started");
+            std::io::stdout().flush().expect("flush startup output");
+            std::thread::sleep(Duration::from_secs(60));
+        }
+        ["--batch", "run", _, "--profile", _] if mode == "actual-fail" => {
+            eprintln!("simulated actual execution failure");
+            std::process::exit(29);
         }
         _ => println!("fake maa"),
     }

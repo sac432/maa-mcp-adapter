@@ -98,6 +98,7 @@ fn stdio_server_initializes_and_lists_tools() {
             "cancel_daily_plan",
             "check_environment",
             "create_daily_plan",
+            "execute_daily_plan",
             "get_daily_options",
             "preview_daily_plan",
             "update_daily_plan",
@@ -115,10 +116,12 @@ fn stdio_server_initializes_and_lists_tools() {
             tool["inputSchema"]["additionalProperties"], false,
             "top-level input must reject unknown fields: {tool}"
         );
-        assert_eq!(
-            tool["annotations"]["openWorldHint"], false,
-            "planning tools must not access the open world: {tool}"
-        );
+        if tool["name"] != "execute_daily_plan" {
+            assert_eq!(
+                tool["annotations"]["openWorldHint"], false,
+                "planning tools must not access the open world: {tool}"
+            );
+        }
     }
 
     for name in ["check_environment", "get_daily_options"] {
@@ -148,6 +151,15 @@ fn stdio_server_initializes_and_lists_tools() {
         assert_eq!(tool["annotations"]["readOnlyHint"], false);
         assert_eq!(tool["annotations"]["destructiveHint"], true);
     }
+
+    let execute = listed_tools
+        .iter()
+        .find(|tool| tool["name"] == "execute_daily_plan")
+        .expect("execution tool");
+    assert_eq!(execute["annotations"]["readOnlyHint"], false);
+    assert_eq!(execute["annotations"]["destructiveHint"], true);
+    assert_eq!(execute["annotations"]["idempotentHint"], false);
+    assert_eq!(execute["annotations"]["openWorldHint"], true);
 
     for name in [
         "update_daily_plan",

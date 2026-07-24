@@ -5,8 +5,10 @@ use thiserror::Error;
 
 pub(crate) mod atomic;
 mod repository;
+mod runs;
 
 pub use repository::{FilePlanRepository, PlanRepository};
+pub use runs::{ActiveRunLock, FileRunRepository, RunRepository, release_active_run_lock};
 
 #[derive(Debug, Error)]
 pub enum StorageError {
@@ -26,8 +28,28 @@ pub enum StorageError {
     MismatchedPlanId,
     #[error("plan repository lock is poisoned")]
     LockPoisoned,
+    #[error("run directory does not exist")]
+    RunDirectoryMissing,
+    #[error("run record was not found")]
+    RunNotFound,
+    #[error("run record id does not match its path")]
+    MismatchedRunId,
+    #[error("run task hash must be 64 lowercase hexadecimal characters")]
+    InvalidTaskHash,
+    #[error("an active run lock already exists")]
+    ActiveRunExists,
+    #[error("active run lock owner does not match")]
+    ActiveRunOwnerMismatch,
+    #[error("active run lock is invalid")]
+    InvalidActiveRunLock,
     #[error("plan record is invalid: {path}")]
     InvalidRecord {
+        path: PathBuf,
+        #[source]
+        source: serde_json::Error,
+    },
+    #[error("run record is invalid: {path}")]
+    InvalidRunRecord {
         path: PathBuf,
         #[source]
         source: serde_json::Error,

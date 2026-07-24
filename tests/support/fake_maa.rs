@@ -48,6 +48,7 @@ impl FakeMaa {
         fs::write(self.executable.with_extension("mode"), mode).expect("configure fake maa mode");
     }
 
+    #[allow(dead_code)]
     pub fn recorded_args(&self) -> Vec<String> {
         self.recorded_invocations()
             .into_iter()

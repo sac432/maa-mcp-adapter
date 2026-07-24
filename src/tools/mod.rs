@@ -18,6 +18,7 @@ use crate::storage::{FilePlanRepository, StorageError};
 
 pub mod environment;
 pub mod plans;
+pub mod runs;
 
 pub fn plan_service(runtime: &SharedRuntime) -> Result<PlanService<FilePlanRepository>, ToolError> {
     let state_directory = runtime.state_directory().map_err(ToolError::from_runtime)?;
@@ -140,6 +141,18 @@ impl ToolError {
                 Vec::new(),
                 vec!["重新调用 create_daily_plan。".to_owned()],
             ),
+            StorageError::RunNotFound => Self::new(
+                "RUN_NOT_FOUND",
+                "没有找到指定运行记录。",
+                Vec::new(),
+                vec!["使用 execute_daily_plan 返回的 run_id。".to_owned()],
+            ),
+            StorageError::ActiveRunExists => Self::new(
+                "ACTIVE_RUN_EXISTS",
+                "已有活动中的 MAA 任务。",
+                Vec::new(),
+                vec!["等待现有任务结束，或先查询并停止现有任务。".to_owned()],
+            ),
             StorageError::LockPoisoned => Self::new(
                 "STORAGE_UNAVAILABLE",
                 "计划存储暂时不可用。",
@@ -153,6 +166,17 @@ impl ToolError {
                 "计划记录损坏或不一致。",
                 Vec::new(),
                 vec!["保留状态目录并检查对应计划记录。".to_owned()],
+            ),
+            StorageError::RunDirectoryMissing
+            | StorageError::MismatchedRunId
+            | StorageError::InvalidTaskHash
+            | StorageError::ActiveRunOwnerMismatch
+            | StorageError::InvalidActiveRunLock
+            | StorageError::InvalidRunRecord { .. } => Self::new(
+                "RUN_RECORD_INVALID",
+                "运行记录或活动锁损坏、不一致。",
+                Vec::new(),
+                vec!["保留状态目录并手动检查运行记录及活动锁。".to_owned()],
             ),
             StorageError::Io { .. } => Self::new(
                 "STORAGE_IO_ERROR",

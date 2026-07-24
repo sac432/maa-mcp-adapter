@@ -1,14 +1,13 @@
 use std::ffi::OsString;
-use std::fmt::{Display, Formatter};
 use std::fs;
 use std::path::{Path, PathBuf};
 
 use serde::Serialize;
 use sha2::{Digest, Sha256};
 use thiserror::Error;
-use uuid::Uuid;
 
 use crate::domain::DailyPlan;
+pub use crate::domain::RunId;
 use crate::planning::DomainError;
 use crate::planning::normalize::{CanonicalTask, normalize_plan};
 use crate::storage::atomic::{WriteMode, write_atomically};
@@ -41,27 +40,6 @@ pub enum TaskFileError {
     IntegrityMismatch,
     #[error(transparent)]
     Process(#[from] ProcessError),
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct RunId(Uuid);
-
-impl RunId {
-    pub fn new() -> Self {
-        Self(Uuid::new_v4())
-    }
-}
-
-impl Default for RunId {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl Display for RunId {
-    fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
-        Display::fmt(&self.0, formatter)
-    }
 }
 
 pub struct TaskFileStore {
@@ -100,6 +78,15 @@ pub struct TaskFileArtifact {
 impl TaskFileArtifact {
     pub fn path(&self) -> &Path {
         &self.path
+    }
+
+    pub fn sha256_hex(&self) -> String {
+        let mut value = String::with_capacity(64);
+        for byte in self.sha256 {
+            use std::fmt::Write as _;
+            write!(&mut value, "{byte:02x}").expect("writing to String cannot fail");
+        }
+        value
     }
 
     pub(crate) fn verify_unchanged(&self) -> Result<(), TaskFileError> {
@@ -378,6 +365,28 @@ impl MaaCliAdapter {
         }
         process::run(&self.executable, &args, self.timeout).await?;
         artifact.verify_unchanged()
+    }
+
+    pub fn launch_generated_task(
+        &self,
+        artifact: &TaskFileArtifact,
+        stdout_path: &Path,
+        stderr_path: &Path,
+    ) -> Result<process::BackgroundProcess, TaskFileError> {
+        artifact.verify_unchanged()?;
+        let args = [
+            OsString::from("--batch"),
+            OsString::from("run"),
+            artifact.path.as_os_str().to_owned(),
+            OsString::from("--profile"),
+            OsString::from(&artifact.profile),
+        ];
+        Ok(process::spawn_background(
+            &self.executable,
+            &args,
+            stdout_path,
+            stderr_path,
+        )?)
     }
 }
 
