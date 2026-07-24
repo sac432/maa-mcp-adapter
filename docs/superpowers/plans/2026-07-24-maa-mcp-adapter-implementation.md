@@ -445,31 +445,31 @@ pub struct PlanService<R: PlanRepository> {
 
 ### 要完成的任务
 
-- [ ] **任务 3.1：实现状态目录解析**
+- [x] **任务 3.1：实现状态目录解析**
 
   默认使用 Windows 应用数据目录，测试通过显式覆盖目录。拒绝状态目录逃逸、文件路径组件中的 `..` 和非法 ID。
 
-- [ ] **任务 3.2：实现原子替换**
+- [x] **任务 3.2：实现原子替换**
 
   同目录临时文件写入、flush、关闭后再 rename；写入中断时旧记录仍可读取，临时文件不能被识别为计划。
 
-- [ ] **任务 3.3：实现带 revision 的计划仓库**
+- [x] **任务 3.3：实现带 revision 的计划仓库**
 
   `plans/<plan_id>.json` 保存完整状态。更新必须携带期望 revision，防止两个 Agent 调用相互覆盖。
 
-- [ ] **任务 3.4：实现创建和更新服务**
+- [x] **任务 3.4：实现创建和更新服务**
 
   创建返回规范计划、缺失字段和下一问题；更新只接受结构化 patch enum，拒绝未知字段，并在任何变化后清除 `confirmed_hash`。
 
-- [ ] **任务 3.5：实现预览和取消服务**
+- [x] **任务 3.5：实现预览和取消服务**
 
   完整有效的 `Draft` 经预览转为 `Ready`；不完整计划返回缺失字段；只有未启动计划可以取消。
 
-- [ ] **任务 3.6：实现计划清理**
+- [x] **任务 3.6：实现计划清理**
 
   只清理超过七天且处于 `Cancelled` 的计划；`Ready`、`Confirmed` 和状态不明确记录不自动删除。
 
-- [ ] **任务 3.7：提交阶段成果**
+- [x] **任务 3.7：提交阶段成果**
 
 ```text
 git add src/storage src/planning tests/plan_tools.rs
@@ -478,12 +478,22 @@ git commit -m "feat: persist and update daily plans"
 
 ### 阶段验收标准
 
-- [ ] 模拟写入中断后，旧计划仍完整可读。
-- [ ] revision 冲突返回稳定错误，不发生静默覆盖。
-- [ ] 重启 `PlanService` 后可继续更新已有草稿。
-- [ ] 预览只在计划完整时进入 `Ready`。
-- [ ] 已取消、运行中和终止计划的非法修改均被拒绝。
-- [ ] 三条必需 Cargo 检查全部通过。
+- [x] 模拟写入中断后，旧计划仍完整可读。
+- [x] revision 冲突返回稳定错误，不发生静默覆盖。
+- [x] 重启 `PlanService` 后可继续更新已有草稿。
+- [x] 预览只在计划完整时进入 `Ready`。
+- [x] 已取消、运行中和终止计划的非法修改均被拒绝。
+- [x] 三条必需 Cargo 检查全部通过。
+
+### 阶段审查记录
+
+- 实现提交：`40ea6e6 feat: persist and update daily plans`
+- TDD RED：依次确认 storage 模块、规划服务和固定清理 API 缺失；测试先覆盖重启恢复、临时文件隔离、revision 冲突、严格 patch、preview/cancel 和清理失败关闭。
+- TDD GREEN：实现 `plans/<UUID>.json` 仓库、同目录临时文件写入/flush/sync/关闭后替换、Windows `ReplaceFileW` 写穿替换、revision CAS、结构化 patch 服务和七天 Cancelled 清理。
+- 审查修正：普通 Draft 更新不再提前转 Ready；只有 preview 可提升完整 Draft；清理 API 内部固定七天，调用方不能传任意 cutoff；仓库锁改为进程级全局锁，覆盖同一服务器内多个仓库/Agent 实例。
+- 安全边界：状态目录必须是无 `.`/`..` 的绝对路径；计划文件名只由强类型 UUID 生成；损坏、未知、临时、Ready、Confirmed 和状态不明确记录均不自动删除。
+- 自动验证：根 crate 与 fake 夹具格式检查、`cargo build --locked`、严格 clippy 和 `cargo test --locked --all-targets` 全部通过；最后一次测试计数为 1 个单元测试、16 个环境测试、24 个计划/存储/服务测试和 1 个 stdio 协议测试，共 42 项。
+- 最终结论：无 Critical 或 Important 遗留问题，可以进入阶段 4。
 
 ---
 
