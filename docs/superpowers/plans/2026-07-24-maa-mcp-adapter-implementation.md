@@ -728,39 +728,39 @@ git commit -m "feat: confirm and launch daily plans"
 
 ### 要完成的任务
 
-- [ ] **任务 7.1：实现 Windows 进程身份**
+- [x] **任务 7.1：实现 Windows 进程身份**
 
   `platform/windows.rs` 使用 PID 加进程创建时间作为 `ProcessStartIdentity`。PID 存在但创建时间不同必须视为 PID 已复用，返回 `Unknown`。
 
-- [ ] **任务 7.2：实现 Named Job Object**
+- [x] **任务 7.2：实现 Named Job Object**
 
   每个运行创建可重开的命名 Job Object，并将 `maa-cli` 分配进去；不使用“句柄关闭即杀死”标志，以保证 MCP Server 退出后任务继续。停止时重新打开同名 Job 并终止其进程树。
 
-- [ ] **任务 7.3：实现 `get_run_status`**
+- [x] **任务 7.3：实现 `get_run_status`**
 
   核对运行记录、PID 创建时间、退出码和日志证据，返回 `Running`、`Succeeded`、`Failed`、`Stopped` 或 `Unknown`。
 
-- [ ] **任务 7.4：实现 `get_run_log`**
+- [x] **任务 7.4：实现 `get_run_log`**
 
   只允许读取已记录的 stdout/stderr 文件；每次最多返回 200 行且不超过 64 KiB；按配置模式遮盖地址、账号标识和令牌格式。
 
-- [ ] **任务 7.5：实现 `stop_run`**
+- [x] **任务 7.5：实现 `stop_run`**
 
   先发送优雅终止并等待 10 秒，再对身份匹配的 Named Job 强制终止。记录 `graceful` 或 `forced`，释放活动任务锁。
 
-- [ ] **任务 7.6：实现启动恢复**
+- [x] **任务 7.6：实现启动恢复**
 
   Server 启动时扫描唯一活动记录。身份匹配则保留锁；进程已退出则核对终止状态；证据冲突则标记 `Unknown` 并保留保护锁，等待人工处理。
 
-- [ ] **任务 7.7：实现七天保留策略**
+- [x] **任务 7.7：实现七天保留策略**
 
   只自动清理超过七天的明确终止运行。`Running` 和 `Unknown` 永不自动删除。
 
-- [ ] **任务 7.8：协议与恢复测试**
+- [x] **任务 7.8：协议与恢复测试**
 
   覆盖正常完成、非零退出、优雅停止、强制停止、PID 复用、Server 重启、日志超限、路径逃逸和脱敏。
 
-- [ ] **任务 7.9：提交阶段成果**
+- [x] **任务 7.9：提交阶段成果**
 
 ```text
 git add src/platform src/storage/runs.rs src/storage/retention.rs src/tools/runs.rs tests/recovery.rs tests/execution_flow.rs
@@ -769,13 +769,25 @@ git commit -m "feat: recover monitor and stop maa runs"
 
 ### 阶段验收标准
 
-- [ ] `tools/list` 中最终出现全部十个设计 Tool。
-- [ ] 状态查询不会把 PID 相同但创建时间不同的进程判为当前运行。
-- [ ] `stop_run` 不能停止未记录进程或身份不匹配进程。
-- [ ] 日志读取严格遵守 200 行和 64 KiB 双重限制。
-- [ ] 重启后能恢复运行中任务，并在结束后释放全局锁。
-- [ ] 状态不明确时安全保留锁，不自动开始新任务。
-- [ ] 三条必需 Cargo 检查全部通过。
+- [x] `tools/list` 中最终出现全部十个设计 Tool。
+- [x] 状态查询不会把 PID 相同但创建时间不同的进程判为当前运行。
+- [x] `stop_run` 不能停止未记录进程或身份不匹配进程。
+- [x] 日志读取严格遵守 200 行和 64 KiB 双重限制。
+- [x] 重启后能恢复运行中任务，并在结束后释放全局锁。
+- [x] 状态不明确时安全保留锁，不自动开始新任务。
+- [x] 三条必需 Cargo 检查全部通过。
+
+### 阶段审查记录
+
+- 实现提交：`a4183e5 feat: recover monitor and stop maa runs`；审查修正：`ff6a554 fix: honor graceful stop timeout`
+- TDD RED：先固定运行记录 revision/CAS 与终态保留，再覆盖 Named Job 重开终止、成功/非零退出、强制停止、PID 创建时间冲突、重启后重新监视、日志 200 行/64 KiB 双限制、路径逃逸、配置脱敏、未知目录内容保留及三个 Tool 的真实 STDIO 协议。
+- TDD GREEN：运行监视持有真实进程句柄并记录退出码；Server 重启后仅对 PID 和创建时间匹配的 Running 记录恢复监视；无可靠证据时写 `Unknown` 并保留活动锁，不猜测成功或失败。
+- Job 与停止：每个 `run_id` 创建可按名称重开的 Windows Job，并把 Job 句柄复制进被启动进程以跨 Server 生命周期保持对象；`stop_run` 先尝试 CTRL_BREAK，固定等待 10 秒，未退出才终止完整 Job，所有操作前必须通过进程身份校验。
+- 日志与保留：日志只允许记录内的规范 stdout/stderr，按文件尾读取并限制 64 KiB 和 200 行，再应用配置字面模式脱敏；终态默认保留七天，目录含未知内容、读取失败、Running 或 Unknown 时不做自动删除。
+- 审查修正：解决 Job 最后句柄关闭后名称消失、进程退出与 PID 复用语义混淆、停止与监视双写 revision 竞态、记录失败只终止主进程、以及清理先删记录导致残余数据失联等问题。
+- 自动验证：根 crate 与 fake 夹具格式检查、`cargo build --all-targets`、严格 clippy 和全量 `cargo test --all-targets --all-features` 全部通过；测试计数为 2 个单元测试、16 个环境测试、24 个计划/存储/服务测试、12 个执行流测试、10 个恢复/状态/日志/停止测试、5 个 stdio 协议测试和 7 个任务文件测试，共 76 项。
+- 人工验收边界：自动测试稳定覆盖 CTRL_BREAK 失败后的 Named Job 强制回退；由于 fake CLI 运行在 `DETACHED_PROCESS` 环境中，优雅 CTRL_BREAK 成功分支保留为阶段 8 的真实 Windows/MAA 人工验收，不把未验证分支宣称为已自动通过。
+- 最终结论：自动化范围内无 Critical 或 Important 遗留问题；阶段 7 可以进入阶段 8。
 
 ---
 
