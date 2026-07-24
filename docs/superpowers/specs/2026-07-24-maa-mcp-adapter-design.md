@@ -1,331 +1,276 @@
-# MAA MCP Adapter MVP Design
+# MAA MCP 适配器 MVP 设计
 
-Date: 2026-07-24
+日期：2026-07-24
 
-## Summary
+## 概述
 
-`maa-mcp-adapter` is an unofficial, independently released MCP server that lets
-an AI agent guide a user through planning and safely running common MAA daily
-tasks.
+`maa-mcp-adapter` 是一个非官方、独立发布的 MCP 服务器，可让 AI Agent 引导用户规划并安全执行常见的 MAA 日常任务。
 
-The user should be able to begin with a short request such as:
+用户只需提出一个简短请求即可开始，例如：
 
 > 帮我启动游戏刷日常。
 
-The agent then asks only for information that is not already explicit or safely
-available from the user's existing `maa-cli` configuration. Before any MAA task
-starts, the agent presents a complete execution summary and the MCP server asks
-for a second, plan-bound confirmation.
+Agent 随后只询问请求中没有明确给出，且无法从用户现有 `maa-cli` 配置中安全获取的信息。在启动任何 MAA 任务之前，Agent 会展示完整的执行摘要，MCP 服务器还会请求一次与该计划绑定的二次确认。
 
-The MVP targets Claude Code and Codex over STDIO. Its code remains portable, but
-only Windows is a supported and tested platform for the first release.
+MVP 通过 STDIO 面向 Claude Code 和 Codex。代码保持可移植性，但首个版本只支持并测试 Windows 平台。
 
-## Goals
+## 目标
 
-- Convert a short natural-language daily-task request into a validated MAA task
-  plan through a guided conversation.
-- Reuse the user's existing `maa-cli` installation, profiles, device
-  connection, client type, and MaaCore resources.
-- Expose a small, structured MCP tool surface instead of arbitrary commands or
-  arbitrary MAA task configuration.
-- Prevent premium-currency spending, account switching, forced credit-shop
-  purchases, and unsupported task types by deterministic server-side policy.
-- Require an inspectable plan summary and explicit confirmation before launch.
-- Run long MAA tasks in the background, preserve their state across MCP client
-  restarts, and support status, log, and stop operations.
-- Be suitable for publication in an independent GitHub repository.
+- 通过引导式对话，把简短的自然语言日常任务请求转换为经过验证的 MAA 任务计划。
+- 复用用户现有的 `maa-cli` 安装、配置档、设备连接、客户端类型和 MaaCore 资源。
+- 提供精简、结构化的 MCP 工具接口，而不是任意命令或任意 MAA 任务配置。
+- 通过确定性的服务器端策略，禁止消耗高级货币、切换账号、强制购买信用商店物品及执行不受支持的任务类型。
+- 启动前必须提供可检查的计划摘要并取得明确确认。
+- 在后台运行耗时较长的 MAA 任务，在 MCP 客户端重启后保留状态，并支持查询状态、读取日志和停止任务。
+- 适合在独立 GitHub 仓库中公开发布。
 
-## Non-goals
+## 非目标
 
-- Bundling, downloading, installing, updating, or modifying MAA, MaaCore, or
-  `maa-cli`.
-- Controlling the MAA graphical interface.
-- Accepting arbitrary shell commands, CLI arguments, JSON, TOML, scripts, or
-  custom MaaCore task types from the agent.
-- Supporting Roguelike, Copilot, SSS Copilot, Reclamation, Custom, SingleStep,
-  VideoRecognition, or other non-daily task families in the MVP.
-- Running more than one MAA task at a time.
-- Providing a remote HTTP MCP service, multi-user hosting, or authentication.
-- Maintaining a second user-preference database that duplicates `maa-cli`
-  profiles.
-- Claiming affiliation with or endorsement by MAA Team.
+- 捆绑、下载、安装、更新或修改 MAA、MaaCore 或 `maa-cli`。
+- 控制 MAA 图形界面。
+- 接受来自 Agent 的任意 Shell 命令、CLI 参数、JSON、TOML、脚本或自定义 MaaCore 任务类型。
+- 在 MVP 中支持 Roguelike、Copilot、SSS Copilot、Reclamation、Custom、SingleStep、VideoRecognition 或其他非日常任务族。
+- 同时运行多个 MAA 任务。
+- 提供远程 HTTP MCP 服务、多用户托管或身份认证。
+- 维护一套与 `maa-cli` 配置档重复的用户偏好数据库。
+- 声称本项目与 MAA Team 有关联或获得其认可。
 
-## Architecture
+## 架构
 
 ```text
 Claude Code / Codex
         |
         | STDIO MCP
         v
-maa-mcp-adapter executable
+maa-mcp-adapter 可执行文件
         |
-        | validated executable + argument array
+        | 经过验证的可执行文件 + 参数数组
         v
-user-installed maa-cli
+用户安装的 maa-cli
         |
         v
-MaaCore -> ADB -> emulator -> Arknights
+MaaCore -> ADB -> 模拟器 -> 明日方舟
 ```
 
-The adapter is a standalone Rust executable built with the official `rmcp` SDK.
-It locates `maa` on `PATH` by default and supports an explicit executable-path
-override. It never launches `maa` through a shell.
+适配器是一个使用官方 `rmcp` SDK 构建的独立 Rust 可执行文件。默认在 `PATH` 中查找 `maa`，也支持显式覆盖可执行文件路径。它绝不会通过 Shell 启动 `maa`。
 
-The adapter and `maa-cli` remain separate programs. The adapter writes a
-validated generated task file to its own state directory and invokes the
-documented `maa-cli` command needed to run that file in batch mode.
+适配器与 `maa-cli` 始终是相互独立的程序。适配器会把经过验证后生成的任务文件写入自己的状态目录，并调用已公开文档说明的 `maa-cli` 命令，以批处理模式运行该文件。
 
-Exact `maa-cli` invocation syntax is isolated behind a `MaaCliAdapter`
-interface. The implementation probes the installed executable's capabilities
-and fails closed when the detected command surface does not match a supported
-adapter implementation. It does not guess based solely on an unrecognized
-version string.
+准确的 `maa-cli` 调用语法封装在 `MaaCliAdapter` 接口之后。实现会探测已安装可执行文件的能力；如果检测到的命令接口与受支持的适配器实现不匹配，则按安全失败原则拒绝运行。它不会仅凭无法识别的版本字符串进行猜测。
 
-## Component boundaries
+## 组件边界
 
-### MCP transport
+### MCP 传输层
 
-- Runs over STDIO.
-- Registers server instructions that require the agent to collect missing
-  answers, preview the plan, obtain user agreement, and only then call the
-  execution tool.
-- Exposes structured input and output schemas for every tool.
-- Marks environment, option, preview, status, and log tools as read-only.
-- Marks execution and stop tools with accurate MCP risk annotations.
+- 通过 STDIO 运行。
+- 注册服务器指令，要求 Agent 收集缺失答案、预览计划、取得用户同意，然后才能调用执行工具。
+- 为每个工具提供结构化输入和输出 Schema。
+- 将环境、选项、预览、状态和日志工具标记为只读。
+- 为执行和停止工具标注准确的 MCP 风险信息。
 
-### Environment inspector
+### 环境检查器
 
-- Locates the `maa` executable.
-- Reads `maa-cli` version and supported command capabilities.
-- Discovers available profiles without modifying them.
-- Reports configuration problems in user-facing terms.
-- Never reads or returns secrets that are not necessary for task planning.
+- 定位 `maa` 可执行文件。
+- 读取 `maa-cli` 版本并探测其支持的命令能力。
+- 在不修改配置档的前提下发现可用配置档。
+- 使用面向用户的语言报告配置问题。
+- 绝不读取或返回任务规划不需要的秘密信息。
 
-### Daily-plan service
+### 日常计划服务
 
-- Owns the plan state machine and validation policy.
-- Merges explicit user choices with safe values obtained from an existing
-  `maa-cli` profile.
-- Returns missing fields and legal choices in structured form so the agent can
-  ask focused questions.
-- Produces the canonical Chinese execution summary.
-- Computes the canonical plan hash used by confirmation and execution.
+- 负责计划状态机和验证策略。
+- 将用户的明确选择与从现有 `maa-cli` 配置档中取得的安全值合并。
+- 以结构化形式返回缺失字段和合法选项，使 Agent 能够提出聚焦的问题。
+- 生成规范的中文执行摘要。
+- 计算供确认和执行使用的规范计划哈希。
 
-### Safety-policy service
+### 安全策略服务
 
-- Defines the MVP task allowlist.
-- Rejects prohibited task types and parameters before any task file is written.
-- Revalidates the complete plan immediately before process creation.
-- Contains no model-generated rules and does not rely on prompts for safety.
+- 定义 MVP 任务白名单。
+- 在写入任何任务文件之前拒绝禁止的任务类型和参数。
+- 在创建进程前立即重新验证完整计划。
+- 不包含模型生成的规则，也不依赖提示词保障安全。
 
-### Maa CLI adapter
+### Maa CLI 适配器
 
-- Converts a validated domain plan into the minimal Maa task configuration.
-- Starts `maa` with a direct executable path and an argument array.
-- Captures stdout and stderr to a log file.
-- Translates exit codes and known failures into stable adapter errors.
-- Provides graceful and forced stop operations through a platform abstraction.
+- 将经过验证的领域计划转换为最精简的 Maa 任务配置。
+- 使用直接的可执行文件路径和参数数组启动 `maa`。
+- 将 stdout 和 stderr 捕获到日志文件。
+- 将退出码和已知故障转换为稳定的适配器错误。
+- 通过平台抽象提供优雅停止和强制停止操作。
 
-### Run registry
+### 运行注册表
 
-- Enforces the global single-active-run lock.
-- Persists plan summary, plan hash, PID, process start identity, generated
-  configuration path, log path, timestamps, and terminal status.
-- Recovers status after the MCP process restarts.
-- Atomically updates state so a partial write cannot become a valid run record.
+- 强制实施全局单活动任务锁。
+- 持久化计划摘要、计划哈希、PID、进程启动标识、生成的配置路径、日志路径、时间戳和终止状态。
+- 在 MCP 进程重启后恢复状态。
+- 以原子方式更新状态，避免部分写入被视为有效运行记录。
 
-## Supported daily-task scope
+## 支持的日常任务范围
 
-The MVP may compose the following MAA task families:
+MVP 可以组合以下 MAA 任务族：
 
-- `StartUp`: connect to the configured device and optionally start the game.
-- `Fight`: main story, resource stages, current activities, and annihilation.
-- `Recruit`: public recruitment with all consumable choices explicitly planned.
-- `Infrast`: infrastructure shift operations using the existing profile.
-- `Mall`: friend visits and credit-store operations under the restrictions
-  below.
-- `Award`: daily/weekly, mail, and supported event reward collection.
-- `CloseDown`: optional game shutdown when explicitly included in the confirmed
-  plan.
+- `StartUp`：连接到已配置的设备，并可选启动游戏。
+- `Fight`：主线、资源关、当前活动和剿灭。
+- `Recruit`：公开招募，所有涉及消耗品的选择都必须明确规划。
+- `Infrast`：使用现有配置档执行基建换班。
+- `Mall`：在下述限制内访问好友和操作信用商店。
+- `Award`：领取日常/周常、邮件和受支持的活动奖励。
+- `CloseDown`：只有明确包含在已确认计划中时，才可选择关闭游戏。
 
-The adapter also supports environment inspection, plan cancellation, current
-run status, bounded log reads, and stopping the current run.
+适配器还支持环境检查、取消计划、查询当前运行状态、受限日志读取以及停止当前任务。
 
-## Safety policy
+## 安全策略
 
-The following rules are mandatory and cannot be weakened by the agent:
+以下规则为强制规则，Agent 无法削弱：
 
-- `Fight.stone` is always `0`.
-- Account switching is unavailable.
-- Premium-currency or paid purchasing is unavailable.
-- Arbitrary Maa task types and arbitrary configuration fragments are
-  unavailable.
-- `Mall.force_shopping_if_credit_full` is always `false`.
-- Credit-store shopping must preserve the user's configured blacklist.
-- A task plan must contain an explicit stage or a validated supported semantic
-  selection when a fight is requested.
-- Fight count and medicine usage must be explicit before a plan becomes ready.
-- Medicine is an integer in the range `0..=10` for the MVP.
-- Recruit settings that consume expedited plans or confirm recruitments must be
-  explicit and included in the summary.
-- A new run cannot start while another active run exists.
-- A modified plan invalidates every previous confirmation.
-- Process termination targets only a process whose PID and start identity match
-  the active run record.
+- `Fight.stone` 始终为 `0`。
+- 不提供账号切换功能。
+- 不提供高级货币消费或付费购买功能。
+- 不提供任意 Maa 任务类型和任意配置片段。
+- `Mall.force_shopping_if_credit_full` 始终为 `false`。
+- 在信用商店购物时必须保留用户已配置的黑名单。
+- 请求战斗时，任务计划必须包含明确关卡，或者经过验证且受支持的语义化选择。
+- 计划进入就绪状态前，必须明确战斗次数和理智药使用量。
+- MVP 中理智药数量必须是 `0..=10` 范围内的整数。
+- 会消耗加急许可或确认招募的公招设置必须明确给出并写入摘要。
+- 存在其他活动任务时不能开始新的运行。
+- 计划一旦修改，之前的所有确认都将失效。
+- 终止进程时，只能以 PID 和启动标识均与活动运行记录相符的进程为目标。
 
-Existing `maa-cli` settings may supply:
+现有 `maa-cli` 设置可以提供：
 
-- Profile name.
-- Device connection and emulator address.
-- Client type.
-- Resource location and platform resource selection.
-- Existing infrastructure plan and ordinary task defaults that do not consume
-  limited resources or weaken an MVP safety rule.
+- 配置档名称。
+- 设备连接和模拟器地址。
+- 客户端类型。
+- 资源位置和平台资源选择。
+- 现有基建计划，以及不会消耗有限资源或削弱 MVP 安全规则的普通任务默认值。
 
-The agent must ask about:
+以下信息必须由 Agent 询问：
 
-- Daily-task categories when the user's intent is ambiguous.
-- Fight category, stage, and count.
-- Medicine usage and exact maximum amount.
-- Recruitment actions that consume permits or expedited plans.
-- Credit-store shopping choices when the existing profile does not resolve
-  them.
-- Optional mail/event reward collection and optional game shutdown when they
-  are not explicit.
+- 用户意图不明确时，要执行的日常任务类别。
+- 战斗类别、关卡和次数。
+- 是否使用理智药及准确的最大使用量。
+- 会消耗招募许可或加急许可的公招操作。
+- 现有配置档无法确定时，信用商店的购物选择。
+- 请求中未明确时，是否领取邮件/活动奖励以及是否关闭游戏。
 
-## Plan state machine
+## 计划状态机
 
 ```text
-Draft -> Ready -> Confirmed -> Running -> Succeeded
-                                      -> Failed
-                                      -> Stopped
+Draft（草稿） -> Ready（就绪） -> Confirmed（已确认） -> Running（运行中） -> Succeeded（成功）
+                                                          -> Failed（失败）
+                                                          -> Stopped（已停止）
 
-Draft/Ready -> Cancelled
-Confirmed   -> Ready, when any field changes
+Draft/Ready -> Cancelled（已取消）
+Confirmed   -> Ready（任意字段发生变化时）
 ```
 
-- `Draft`: one or more required fields are missing or invalid.
-- `Ready`: the plan is complete, valid, and has a canonical preview.
-- `Confirmed`: the user accepted the exact canonical preview through MCP
-  elicitation.
-- `Running`: a matching `maa-cli` process was created and recorded.
-- Terminal states record the final result and release the active-run lock.
+- `Draft`：一个或多个必填字段缺失或无效。
+- `Ready`：计划完整、有效，并已生成规范预览。
+- `Confirmed`：用户通过 MCP elicitation 接受了准确的规范预览。
+- `Running`：已创建并记录匹配的 `maa-cli` 进程。
+- 终止状态会记录最终结果并释放活动任务锁。
 
-Confirmation is bound to the canonical plan hash. Execution performs a final
-validation and recomputes the hash. A mismatch returns the plan to `Ready`
-without starting a process.
+确认与规范计划哈希绑定。执行时会进行最终验证并重新计算哈希。哈希不匹配时，计划会返回 `Ready` 状态，且不会启动进程。
 
-## MCP tool surface
+## MCP 工具接口
 
 ### `check_environment`
 
-Read-only. Returns:
+只读。返回：
 
-- Whether `maa` was found and how.
-- Version and capability probe results.
-- Available profile names.
-- Whether the adapter can safely create a plan and run a task.
-- Actionable diagnostics without secret values.
+- 是否找到 `maa` 以及查找方式。
+- 版本与能力探测结果。
+- 可用配置档名称。
+- 适配器能否安全创建计划和运行任务。
+- 不含秘密值的可操作诊断信息。
 
 ### `get_daily_options`
 
-Read-only. Accepts an optional profile and partial intent. Returns:
+只读。接受可选配置档和部分意图。返回：
 
-- Daily-task categories.
-- Supported fight categories.
-- Available choices that can be determined from local installed resources.
-- Fields the agent will need to collect.
-- Fixed safety restrictions.
+- 日常任务类别。
+- 支持的战斗类别。
+- 可根据本地已安装资源确定的选项。
+- Agent 需要收集的字段。
+- 固定的安全限制。
 
-The MVP does not fetch untrusted web content to populate choices. If installed
-resources cannot enumerate a current event stage, the agent asks the user for a
-stage identifier and the adapter validates its syntax and lets `maa-cli`
-perform the authoritative runtime check.
+MVP 不会通过获取不受信任的网络内容来填充选项。如果已安装资源无法列举当前活动关卡，Agent 会询问用户关卡标识；适配器验证其语法，再由 `maa-cli` 在运行时进行权威检查。
 
 ### `create_daily_plan`
 
-Creates a local draft from structured daily-task choices. It never runs MAA.
-Returns a `plan_id`, the normalized plan, missing fields, validation errors, and
-the next recommended question.
+根据结构化日常任务选项创建本地草稿，绝不运行 MAA。返回 `plan_id`、规范化计划、缺失字段、验证错误和建议询问的下一个问题。
 
 ### `update_daily_plan`
 
-Applies structured answers to an existing draft. It rejects unknown fields and
-prohibited parameters. Any change invalidates an existing confirmation.
+将结构化答案应用到现有草稿。拒绝未知字段和禁止参数。任何修改都会使现有确认失效。
 
 ### `preview_daily_plan`
 
-Read-only with respect to external systems. Validates the plan and returns:
+对于外部系统是只读的。验证计划并返回：
 
-- Canonical Chinese summary.
-- Per-task operations in execution order.
-- Limited-resource usage.
-- Fixed safety values such as `stone = 0`.
-- Profile and device target.
-- Canonical plan hash.
+- 规范的中文摘要。
+- 按执行顺序排列的各任务操作。
+- 有限资源使用情况。
+- `stone = 0` 等固定安全值。
+- 配置档和目标设备。
+- 规范计划哈希。
 
-It only transitions a complete `Draft` to `Ready`.
+只有完整的 `Draft` 才会转换为 `Ready`。
 
 ### `execute_daily_plan`
 
-Side-effecting. Requirements:
+具有副作用。要求：
 
-- Plan is `Ready`.
-- No active run exists.
-- Environment and `maa-cli` capabilities still pass.
-- MCP elicitation presents the canonical summary and receives explicit user
-  acceptance.
-- Plan hash remains unchanged after elicitation.
+- 计划处于 `Ready` 状态。
+- 不存在其他活动任务。
+- 环境和 `maa-cli` 能力仍然通过检查。
+- MCP elicitation 展示规范摘要并取得用户明确同意。
+- elicitation 完成后计划哈希没有变化。
 
-On success it starts the background process and returns `run_id`, initial
-status, PID, summary, and log location.
+成功时启动后台进程，并返回 `run_id`、初始状态、PID、摘要和日志位置。
 
 ### `get_run_status`
 
-Read-only. Reconciles the persisted record with the process identity and
-returns `Running`, `Succeeded`, `Failed`, `Stopped`, or `Unknown`, with
-timestamps and a concise result.
+只读。将持久化记录与进程标识进行核对，并返回 `Running`、`Succeeded`、`Failed`、`Stopped` 或 `Unknown`，以及时间戳和简要结果。
 
 ### `get_run_log`
 
-Read-only. Returns a bounded tail of the selected run log. It enforces a maximum
-byte/line count, redacts configured sensitive patterns, and never loads an
-unbounded log into model context.
+只读。返回所选运行日志末尾的有限内容。它会限制最大字节数/行数，遮盖已配置的敏感模式，并且绝不会把无限长度的日志载入模型上下文。
 
 ### `stop_run`
 
-Protective side effect. It verifies process identity, requests graceful
-termination, waits for a bounded interval, and then terminates the recorded
-process tree if needed. It records whether the stop was graceful or forced.
+保护性副作用。验证进程标识后请求优雅终止，等待有限时间；必要时再终止记录中的进程树。它会记录停止是优雅完成还是强制执行。
 
 ### `cancel_daily_plan`
 
-Cancels an unstarted plan. It cannot affect a running task.
+取消尚未启动的计划。它无法影响正在运行的任务。
 
-## Example interaction
+## 交互示例
 
 ```text
-User:
+用户：
 帮我启动游戏刷日常。
 
-Agent:
+Agent：
 今天要刷哪一类？
 1. 主线
 2. 当前活动
 3. 剿灭
 4. 资源关
 
-User:
+用户：
 活动。
 
-Agent:
+Agent：
 刷哪个活动关卡、几次？是否使用理智药？
 
-User:
+用户：
 XX-8，刷 5 次，不吃药。基建、公招、信用和奖励也做。
 
-Agent:
-将使用现有 default profile：
+Agent：
+将使用现有 default 配置档：
 - 启动已配置客户端
 - 活动 XX-8，5 次
 - 不使用理智药，不使用源石
@@ -337,36 +282,30 @@ Agent:
 
 是否同意执行以上计划？
 
-User:
+用户：
 同意。
 
-Agent:
-[calls execute_daily_plan; MCP server presents the same summary in elicitation]
+Agent：
+[调用 execute_daily_plan；MCP 服务器通过 elicitation 展示相同摘要]
 ```
 
-## Background execution and recovery
+## 后台执行与恢复
 
-The server starts a detached `maa-cli` process with stdout and stderr redirected
-to files owned by the adapter. The task continues if Claude Code, Codex, or the
-STDIO MCP server exits.
+服务器会启动一个分离的 `maa-cli` 进程，并将 stdout 和 stderr 重定向到适配器管理的文件。即使 Claude Code、Codex 或 STDIO MCP 服务器退出，任务也会继续运行。
 
-On restart, the adapter:
+重启后，适配器会：
 
-1. Loads the active-run record.
-2. Checks that PID and process start identity still match.
-3. Reconciles exit/log evidence with the stored status.
-4. Keeps the single-run lock only while the matching process is active.
-5. Marks ambiguous state as `Unknown` and requires manual inspection instead of
-   guessing.
+1. 加载活动运行记录。
+2. 检查 PID 与进程启动标识是否仍然匹配。
+3. 根据退出信息和日志证据核对存储状态。
+4. 仅在匹配进程仍然活动时保留单任务锁。
+5. 将无法明确判断的状态标记为 `Unknown` 并要求手动检查，而不是进行猜测。
 
-On Windows, process creation, identity checks, and process-tree termination are
-implemented behind a Windows-specific module. Portable interfaces allow later
-Linux and macOS implementations without changing MCP tools or plan semantics.
+在 Windows 上，进程创建、标识检查和进程树终止均封装在 Windows 专用模块之后。可移植接口允许以后添加 Linux 和 macOS 实现，而无需修改 MCP 工具或计划语义。
 
-## Local storage
+## 本地存储
 
-The adapter uses the platform application-data directory, with a configurable
-override for tests and advanced users. It stores:
+适配器使用平台的应用程序数据目录，并为测试和高级用户提供可配置的覆盖路径。存储内容如下：
 
 ```text
 config.toml
@@ -378,90 +317,82 @@ runs/<run_id>/stderr.log
 locks/active-run.lock
 ```
 
-`config.toml` contains only adapter settings such as an explicit `maa`
-executable path, state-directory override, retention duration, and redaction
-patterns. It does not duplicate `maa-cli` profiles.
+`config.toml` 只包含适配器设置，例如显式 `maa` 可执行文件路径、状态目录覆盖值、保留时长和敏感信息遮盖模式。它不会复制 `maa-cli` 配置档。
 
-Plans and run records use atomic replacement. Completed run data is retained
-for seven days by default and then removed during safe startup housekeeping.
-Active and ambiguous records are never removed automatically.
+计划和运行记录使用原子替换。已完成的运行数据默认保留七天，之后在安全的启动清理过程中删除。活动记录和状态不明确的记录永远不会被自动删除。
 
-## Error handling
+## 错误处理
 
-The adapter fails closed when:
+遇到以下情况时，适配器按安全失败原则拒绝运行：
 
-- `maa` is missing or its executable path is invalid.
-- Capability probing fails or returns an unsupported command surface.
-- The selected profile is unavailable.
-- Required plan fields are missing.
-- A plan includes an unknown or prohibited value.
-- The plan hash changes after preview or confirmation.
-- Another run is active or its state is ambiguous.
-- The generated task configuration cannot be written atomically.
-- Process identity cannot be verified for status or stop operations.
+- 缺少 `maa` 或其可执行文件路径无效。
+- 能力探测失败，或返回不受支持的命令接口。
+- 所选配置档不可用。
+- 缺少计划必填字段。
+- 计划包含未知或禁止的值。
+- 预览或确认后计划哈希发生变化。
+- 存在其他活动任务，或其状态不明确。
+- 无法以原子方式写入生成的任务配置。
+- 无法为状态查询或停止操作验证进程标识。
 
-Errors are stable structured values with:
+错误采用稳定的结构化值，包含：
 
-- Machine-readable code.
-- Short user-facing Chinese message.
-- Relevant safe details.
-- Recommended recovery action.
-- A bounded, redacted log tail when applicable.
+- 机器可读的错误码。
+- 简短、面向用户的中文消息。
+- 相关且安全的详细信息。
+- 建议的恢复操作。
+- 适用时提供经过遮盖且长度受限的日志末尾内容。
 
-No error path silently retries a side-effecting operation. Retrying requires an
-explicit new tool call, and execution remains protected by the existing
-confirmed plan hash.
+任何错误路径都不会静默重试具有副作用的操作。重试需要显式发起新的工具调用，并且执行仍受现有已确认计划哈希的保护。
 
-## Security and privacy
+## 安全与隐私
 
-- Never invoke a shell.
-- Treat all model-supplied fields as untrusted input.
-- Canonicalize and validate executable, profile, state, and generated-file
-  paths.
-- Keep generated files inside the adapter state directory.
-- Do not log environment variables, authorization data, account identifiers,
-  or full command environments.
-- Bound every log response returned through MCP.
-- Mark external MAA/`maa-cli` output as untrusted data, not agent instructions.
-- Keep final safety checks in deterministic Rust code.
+- 绝不调用 Shell。
+- 将所有模型提供的字段视为不受信任的输入。
+- 对可执行文件、配置档、状态目录和生成文件的路径进行规范化与验证。
+- 将生成的文件限制在适配器状态目录内。
+- 不记录环境变量、授权数据、账号标识符或完整的命令环境。
+- 限制通过 MCP 返回的每一条日志响应。
+- 将外部 MAA/`maa-cli` 输出视为不受信任的数据，而不是 Agent 指令。
+- 最终安全检查必须由确定性的 Rust 代码实现。
 
-## Testing and verification
+## 测试与验证
 
-### Unit tests
+### 单元测试
 
-- Plan-state transitions.
-- Required-field discovery.
-- Allowlist and prohibited-field enforcement.
-- Medicine and count bounds.
-- Summary canonicalization.
-- Plan hashing and confirmation invalidation.
-- Path and redaction behavior.
-- Run-lock transitions.
+- 计划状态转换。
+- 必填字段发现。
+- 白名单和禁止字段的强制实施。
+- 理智药和次数边界。
+- 摘要规范化。
+- 计划哈希和确认失效。
+- 路径与敏感信息遮盖行为。
+- 运行锁状态转换。
 
-### Integration tests
+### 集成测试
 
-A fake `maa` executable exercises:
+使用假的 `maa` 可执行文件覆盖以下场景：
 
-- Capability probing.
-- Successful process launch and completion.
-- Non-zero exit and stderr capture.
-- Long-running background status.
-- Graceful stop and forced process-tree stop.
-- Server restart and run recovery.
-- Executable and state paths containing spaces and Chinese characters.
-- Concurrent execution rejection.
+- 能力探测。
+- 成功启动并完成进程。
+- 非零退出码与 stderr 捕获。
+- 长时间后台运行状态。
+- 优雅停止和强制停止进程树。
+- 服务器重启和运行恢复。
+- 可执行文件及状态路径包含空格和中文字符。
+- 拒绝并发执行。
 
-### MCP protocol tests
+### MCP 协议测试
 
-- STDIO initialization and capability negotiation.
-- Tool schemas and risk annotations.
-- Read-only versus side-effecting tool behavior.
-- Elicitation acceptance, rejection, and cancellation.
-- Structured error results and bounded log output.
+- STDIO 初始化和能力协商。
+- 工具 Schema 和风险标注。
+- 只读工具与副作用工具的行为。
+- elicitation 的接受、拒绝和取消。
+- 结构化错误结果和受限日志输出。
 
-### Required local checks
+### 必需的本地检查
 
-Every implementation change must pass:
+每次实现变更都必须通过：
 
 ```text
 cargo fmt --check
@@ -469,80 +400,63 @@ cargo clippy --all-targets --all-features -- -D warnings
 cargo test --all-targets
 ```
 
-Tests must not be deleted or skipped to obtain a passing result.
+不得为了让检查通过而删除或跳过测试。
 
-### Manual acceptance tests
+### 手动验收测试
 
-On Windows:
+在 Windows 上：
 
-1. Configure the built executable in Claude Code over STDIO.
-2. Complete one full “帮我启动游戏刷日常” planning and confirmation flow.
-3. Repeat the same flow in Codex.
-4. Confirm an incomplete plan cannot execute.
-5. Confirm a modified plan requires fresh confirmation.
-6. Confirm a prohibited stone or custom-task request is rejected.
-7. Confirm the task survives MCP/client shutdown.
-8. Confirm a restarted client can query status and logs.
-9. Confirm stop targets only the recorded process tree.
+1. 通过 STDIO 在 Claude Code 中配置构建完成的可执行文件。
+2. 完成一次完整的“帮我启动游戏刷日常”规划和确认流程。
+3. 在 Codex 中重复相同流程。
+4. 确认不完整的计划无法执行。
+5. 确认修改后的计划必须重新确认。
+6. 确认使用源石或自定义任务的禁止请求会被拒绝。
+7. 确认任务在 MCP/客户端关闭后继续运行。
+8. 确认重启后的客户端可以查询状态和日志。
+9. 确认停止操作只以记录中的进程树为目标。
 
-## Distribution and project identity
+## 发布与项目身份
 
-- Independent public GitHub repository.
-- Working repository name: `maa-mcp-adapter`.
-- Own project icon; no MAA Logo.
-- README subtitle: “Unofficial MCP adapter for MAA.”
-- README states that the project is not affiliated with or endorsed by MAA
-  Team.
-- README links to the MAA repository, `maa-cli`, their licenses, and the MAA
-  user agreement.
-- The adapter source is licensed under Apache-2.0.
-- MAA and `maa-cli` remain separately installed AGPL-3.0 programs.
-- MVP releases contain only adapter binaries, checksums, license, notices, and
-  documentation.
+- 使用独立的公开 GitHub 仓库。
+- 暂定仓库名称：`maa-mcp-adapter`。
+- 使用自己的项目图标，不使用 MAA Logo。
+- README 副标题：“Unofficial MCP adapter for MAA.”
+- README 声明本项目与 MAA Team 无关联，也未获得其认可。
+- README 链接到 MAA 仓库、`maa-cli`、各自的许可证以及 MAA 用户协议。
+- 适配器源代码采用 Apache-2.0 许可证。
+- MAA 和 `maa-cli` 仍是需要单独安装的 AGPL-3.0 程序。
+- MVP 发布包只包含适配器二进制文件、校验和、许可证、声明和文档。
 
-This separation is an engineering and distribution decision, not legal advice.
-Bundling or linking MAA/`maa-cli` code in the future requires a new licensing
-review.
+这种分离属于工程和发布决策，不构成法律建议。未来如果捆绑或链接 MAA/`maa-cli` 代码，必须重新进行许可证审查。
 
-## Alternatives considered
+## 已考虑的替代方案
 
-### Direct MaaCore integration
+### 直接集成 MaaCore
 
-Rejected for the MVP because it couples the adapter to MaaCore loading,
-callbacks, resources, and platform-specific library distribution. It also
-increases licensing and packaging complexity.
+MVP 不采用该方案，因为它会使适配器与 MaaCore 加载、回调、资源和平台专用库分发紧密耦合，同时增加许可证和打包复杂度。
 
-### TypeScript MCP server
+### TypeScript MCP 服务器
 
-Viable and supported by a Tier 1 official SDK, but it would require Node.js or
-an additional bundling strategy on end-user Windows machines.
+该方案可行且受 Tier 1 官方 SDK 支持，但会要求最终用户的 Windows 计算机安装 Node.js，或额外采用一种打包策略。
 
-### Python FastMCP server
+### Python FastMCP 服务器
 
-Fast to prototype and supported by a Tier 1 official SDK, but it would require
-Python/uv or a separate Windows executable-packaging pipeline.
+该方案原型开发速度快且受 Tier 1 官方 SDK 支持，但会要求安装 Python/uv，或建立单独的 Windows 可执行文件打包流程。
 
-### Rust MCP server
+### Rust MCP 服务器
 
-Selected because it produces a standalone executable, matches the implementation
-language of `maa-cli`, and provides suitable process, locking, and persistence
-control. The MVP needs only the Rust SDK's stable STDIO, tool, schema, and
-elicitation capabilities; it does not depend on experimental MCP task support.
+选择该方案是因为它可以生成独立可执行文件，与 `maa-cli` 的实现语言一致，并能提供合适的进程、锁和持久化控制。MVP 只需要 Rust SDK 中稳定的 STDIO、工具、Schema 和 elicitation 能力，不依赖实验性的 MCP task 支持。
 
-## MVP acceptance criteria
+## MVP 验收标准
 
-The MVP is complete when:
+满足以下条件时，MVP 即视为完成：
 
-- A Windows user with a configured `maa-cli` can register one executable in
-  Claude Code and Codex.
-- The agent can turn a one-sentence daily request into a complete plan by asking
-  only unresolved questions.
-- The server produces a deterministic Chinese summary and requires plan-bound
-  confirmation before launch.
-- Every prohibited operation is rejected by server-side validation.
-- A supported daily plan launches through `maa-cli`, returns a `run_id`, and can
-  be queried, logged, and stopped.
-- A running task survives MCP client shutdown and is reconciled after restart.
-- The global single-run lock prevents emulator-control conflicts.
-- All required formatting, linting, unit, integration, MCP, and Windows
-  acceptance checks pass.
+- 已配置 `maa-cli` 的 Windows 用户可以在 Claude Code 和 Codex 中注册同一个可执行文件。
+- Agent 可以仅询问尚未确定的问题，把一句话的日常请求转换为完整计划。
+- 服务器生成确定性的中文摘要，并在启动前要求与计划绑定的确认。
+- 所有禁止操作都会被服务器端验证拒绝。
+- 受支持的日常计划通过 `maa-cli` 启动，返回 `run_id`，并且可以查询状态、读取日志和停止。
+- 运行中的任务能在 MCP 客户端关闭后继续执行，并在重启后核对状态。
+- 全局单任务锁可防止模拟器控制冲突。
+- 所有必需的格式化、lint、单元测试、集成测试、MCP 测试和 Windows 验收检查均通过。
