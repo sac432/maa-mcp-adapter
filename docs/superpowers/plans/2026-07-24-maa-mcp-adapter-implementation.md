@@ -162,13 +162,13 @@ maa-mcp-adapter/
 
 ### 要完成的任务
 
-- [ ] **任务 0.1：确认环境和依赖**
+- [x] **任务 0.1：确认环境和依赖**
 
   运行 `rustc --version`、`cargo --version`，记录 Windows 架构；向用户提交上一节依赖说明并取得明确同意。
 
   验收要求：使用受支持的 Rust stable；未经同意时停止，不创建 `Cargo.toml`。
 
-- [ ] **任务 0.2：创建工程骨架**
+- [x] **任务 0.2：创建工程骨架**
 
   创建：`Cargo.toml`、`Cargo.lock`、`rust-toolchain.toml`、`.gitignore`、`src/main.rs`、`src/server.rs`、`src/error.rs`。
 
@@ -183,15 +183,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
   若使用单 package 布局，则同时创建 `src/lib.rs` 导出模块，集成测试只通过公共接口访问内部服务。
 
-- [ ] **任务 0.3：实现最小 MCP 初始化**
+- [x] **任务 0.3：实现最小 MCP 初始化**
 
   `server::serve_stdio()` 使用 `tokio::io::{stdin, stdout}` 和 `rmcp::ServiceExt` 启动 Server。此时可以没有业务 Tool，但必须提供固定服务名、版本、中文服务器说明和 tools capability。
 
-- [ ] **任务 0.4：添加协议冒烟测试**
+- [x] **任务 0.4：添加协议冒烟测试**
 
   `tests/stdio_protocol.rs` 启动构建后的二进制，发送 `initialize`、`notifications/initialized` 和 `tools/list`，验证返回合法 JSON-RPC，且 stdout 不混入日志文本。
 
-- [ ] **任务 0.5：提交阶段成果**
+- [x] **任务 0.5：提交阶段成果**
 
 ```text
 git add Cargo.toml Cargo.lock rust-toolchain.toml .gitignore src tests
@@ -200,12 +200,20 @@ git commit -m "chore: bootstrap Rust MCP server"
 
 ### 阶段验收标准
 
-- [ ] `cargo build --locked` 成功。
-- [ ] `cargo fmt --check` 成功。
-- [ ] `cargo clippy --all-targets --all-features -- -D warnings` 成功。
-- [ ] `cargo test --all-targets` 成功，协议冒烟测试至少覆盖初始化和 `tools/list`。
-- [ ] 运行服务器时 stdout 只有 MCP 帧，诊断信息只写 stderr。
-- [ ] Git 分支不是 `main` 或 `master`，工作区只包含预期文件。
+- [x] `cargo build --locked` 成功。
+- [x] `cargo fmt --check` 成功。
+- [x] `cargo clippy --all-targets --all-features -- -D warnings` 成功。
+- [x] `cargo test --all-targets` 成功，协议冒烟测试至少覆盖初始化和 `tools/list`。
+- [x] 运行服务器时 stdout 只有 MCP 帧，诊断信息只写 stderr。
+- [x] Git 分支不是 `main` 或 `master`，工作区只包含预期文件。
+
+### 阶段审查记录
+
+- 实现提交：`cdec74c chore: bootstrap Rust MCP server`
+- TDD RED：测试因缺少 `initialize` 响应而失败；首次 GREEN 又正确发现服务名称误报为 `rmcp`。
+- TDD GREEN：修正服务身份后协议测试通过。
+- 审查修正：为子进程协议测试增加 5 秒超时，并补充版本和中文 instructions 断言。
+- 最终结论：无 Critical 或 Important 遗留问题，可以进入阶段 1。
 
 ---
 
