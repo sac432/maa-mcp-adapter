@@ -799,23 +799,23 @@ git commit -m "feat: recover monitor and stop maa runs"
 
 ### 要完成的任务
 
-- [ ] **任务 8.1：完成项目身份文件**
+- [x] **任务 8.1：完成项目身份文件**
 
   创建 `LICENSE`（Apache-2.0）、`NOTICE` 和 `README.md`。README 副标题使用 “Unofficial MCP adapter for MAA.”，明确声明项目与 MAA Team 无关联、未获其认可。
 
-- [ ] **任务 8.2：编写配置文档**
+- [x] **任务 8.2：编写配置文档**
 
   `docs/configuration.md` 说明状态目录、显式 `maa` 路径、保留期和脱敏规则，不复制 `maa-cli` 配置档。
 
-- [ ] **任务 8.3：编写客户端配置文档**
+- [x] **任务 8.3：编写客户端配置文档**
 
   `docs/client-setup.md` 分别提供 Claude Code 与 Codex 的 STDIO 配置示例、Windows 路径转义、环境检查和卸载步骤。
 
-- [ ] **任务 8.4：编写安全模型**
+- [x] **任务 8.4：编写安全模型**
 
   `docs/security-model.md` 说明信任边界、白名单、确认哈希、单任务锁、日志限制、禁止操作及威胁模型。
 
-- [ ] **任务 8.5：执行 fake maa 端到端测试**
+- [x] **任务 8.5：执行 fake maa 端到端测试**
 
   从 STDIO 初始化开始，完成：
 
@@ -839,11 +839,11 @@ check_environment
 
   两个客户端都必须验证：一句话请求、逐项追问、完整摘要、MCP 二次确认、状态查询、日志读取、停止和重启恢复。
 
-- [ ] **任务 8.8：构建发布候选**
+- [x] **任务 8.8：构建发布候选**
 
   使用 `cargo build --release --locked`，生成 Windows 二进制和 SHA-256。发布包只包含适配器二进制、校验和、许可证、NOTICE 和文档，不包含 MAA/`maa-cli`。
 
-- [ ] **任务 8.9：提交发布准备**
+- [x] **任务 8.9：提交发布准备**
 
 ```text
 git add README.md LICENSE NOTICE docs src tests Cargo.toml Cargo.lock
@@ -855,12 +855,22 @@ git commit -m "docs: prepare maa-mcp-adapter MVP release"
 - [ ] Claude Code 和 Codex 均能列出全部十个 Tool。
 - [ ] 两个客户端均完成一次 fake maa 全流程。
 - [ ] 用户明确批准后，真实 `maa-cli` 完成一次安全日常流程。
-- [ ] 不完整计划、修改后旧确认、碎石、自定义任务及并发执行请求均被拒绝。
+- [x] 不完整计划、修改后旧确认、碎石、自定义任务及并发执行请求均被拒绝。
 - [ ] 客户端关闭后任务继续，重启后可查询状态和日志。
-- [ ] README、配置、安全、客户端安装及许可证文档齐全。
-- [ ] 发布包中不存在 MAA、MaaCore、`maa-cli` 或其资源。
-- [ ] `cargo fmt --check`、严格 clippy、全部测试及 release build 均成功。
-- [ ] 不修改 `.github/workflows`，发布操作和推送必须另获用户明确授权。
+- [x] README、配置、安全、客户端安装及许可证文档齐全。
+- [x] 发布包中不存在 MAA、MaaCore、`maa-cli` 或其资源。
+- [x] `cargo fmt --check`、严格 clippy、全部测试及 release build 均成功。
+- [x] 不修改 `.github/workflows`，发布操作和推送必须另获用户明确授权。
+
+### 阶段审查记录
+
+- 发布准备提交：`4ba04b9 docs: prepare maa-mcp-adapter MVP release`
+- 官方资料核对：使用当前 Codex 官方手册确认 `[mcp_servers.<name>]`、CLI add/remove 和 `mcp_elicitations`；使用 Claude Code 官方 MCP 文档确认 Windows STDIO、scope、add/remove 与 form elicitation。并用本机两个 CLI 的 `--help` 只读核对示例参数。
+- 自动端到端：新增单个真实 STDIO 会话，完成环境、选项、创建、更新、预览、elicitation 接受、状态、脱敏日志和停止；该测试发现并修复 `\\?\` Windows 规范路径与普通绝对路径比较导致合法日志被拒绝的问题，路径逃逸测试继续通过。
+- 自动验证：根 crate 与 fake 夹具格式检查、严格 clippy、77 项测试、`cargo build --release --locked` 全部通过；release EXE 独立初始化成功并恰好列出十个 Tools。
+- 发布候选：`maa-mcp-adapter-v0.1.0-windows-x86_64.zip` 只含适配器 EXE、EXE 校验和、LICENSE、NOTICE、README 和四份文档。EXE SHA-256：`8c5019623ac5d2004f84bad2d1cd0147d4f0d9377412e6680a1d8668fb0d850c`；ZIP SHA-256：`e385795d4aaddb83d7968d1fbd9dac383b9a5529f7bb02c75f171b30c4fae592`。
+- 人工阻塞：本机存在 Codex 和 Claude Code CLI，但未修改用户客户端配置或消耗用户账户执行模型会话；本机未发现真实 `maa.exe`/`maa-cli.exe`。因此任务 8.6、8.7 及三条对应验收标准保持未完成。
+- 当前结论：代码和自动化发布候选已完成，阶段 8 尚不能宣告最终通过。需要用户提供真实 MAA 环境并明确授权两个客户端的实际配置/会话验收；仍未推送、打 Tag 或创建 GitHub Release。
 
 ---
 
