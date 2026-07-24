@@ -252,15 +252,15 @@ pub struct MaaCliCapabilities {
 
 ### 要完成的任务
 
-- [ ] **任务 1.1：实现可执行文件定位**
+- [x] **任务 1.1：实现可执行文件定位**
 
   `src/config.rs` 定义适配器配置；解析优先级为 `config.toml` 中的显式绝对路径，其次是 Windows `PATH` 中的 `maa.exe`，最后是 `maa-cli.exe`。拒绝目录、相对覆盖路径和不存在的文件。
 
-- [ ] **任务 1.2：实现无 Shell 命令执行器**
+- [x] **任务 1.2：实现无 Shell 命令执行器**
 
   `src/maa_cli/process.rs` 只能通过 `tokio::process::Command::new(&executable).args(&args)` 调用程序。接口不接受拼接完成的命令字符串。
 
-- [ ] **任务 1.3：实现能力探测**
+- [x] **任务 1.3：实现能力探测**
 
   依次探测：
 
@@ -273,11 +273,11 @@ maa --help
 
   只解析稳定字段；无法确认 `--batch`、`--profile`、`--dry-run`、`--log-file` 或绝对任务路径能力时，将 `can_execute` 设为 `false`。
 
-- [ ] **任务 1.4：实现配置档发现**
+- [x] **任务 1.4：实现配置档发现**
 
   从 `maa dir config` 返回的规范化目录读取 `profiles` 子目录，只返回合法文件名对应的配置档名称，不读取或返回配置内容中的账号标识和其他秘密。
 
-- [ ] **任务 1.5：验证绝对任务路径**
+- [x] **任务 1.5：验证绝对任务路径**
 
   在适配器状态目录写入最小禁用任务文件，通过以下参数执行安全 dry-run：
 
@@ -287,11 +287,11 @@ maa --batch run <absolute-path> --dry-run --profile <profile>
 
   探测成功后删除探测文件；失败时保留经过脱敏的诊断，不猜测兼容性。
 
-- [ ] **任务 1.6：创建 fake maa 测试夹具**
+- [x] **任务 1.6：创建 fake maa 测试夹具**
 
   `tests/support/fake_maa.rs` 模拟版本、帮助、配置目录、成功 dry-run、缺失能力、非零退出和含中文/空格路径。测试必须检查收到的是参数数组，而不是 Shell 字符串。
 
-- [ ] **任务 1.7：提交阶段成果**
+- [x] **任务 1.7：提交阶段成果**
 
 ```text
 git add src/config.rs src/error.rs src/maa_cli tests/support tests/environment_tools.rs
@@ -300,12 +300,22 @@ git commit -m "feat: inspect maa-cli environment safely"
 
 ### 阶段验收标准
 
-- [ ] 显式路径、`maa.exe` 和 `maa-cli.exe` 三种定位路径均有测试。
-- [ ] 路径含空格、中文和 Shell 元字符时仍作为单个参数传递。
-- [ ] 能力缺失、版本命令失败或配置目录无效时安全失败。
-- [ ] 绝对任务文件只写入适配器状态目录，不写入用户 `$MAA_CONFIG_DIR/tasks`。
-- [ ] 真实 `maa-cli` 的 `--dry-run` 兼容测试通过；若本机未配置 MaaCore，记录为人工环境阻塞，不伪造成功。
-- [ ] 三条必需 Cargo 检查全部通过。
+- [x] 显式路径、`maa.exe` 和 `maa-cli.exe` 三种定位路径均有测试。
+- [x] 路径含空格、中文和 Shell 元字符时仍作为单个参数传递。
+- [x] 能力缺失、版本命令失败或配置目录无效时安全失败。
+- [x] 绝对任务文件只写入适配器状态目录，不写入用户 `$MAA_CONFIG_DIR/tasks`。
+- [x] 真实 `maa-cli` 的 `--dry-run` 兼容测试通过；若本机未配置 MaaCore，记录为人工环境阻塞，不伪造成功。
+- [x] 三条必需 Cargo 检查全部通过。
+
+### 阶段审查记录
+
+- 实现提交：`042f8d5 feat: inspect maa-cli environment safely`
+- TDD RED：依次确认了配置模块缺失、PATH 安全失败类型缺失、TOML 解析缺失、无 Shell 进程层缺失、环境检查接口缺失、stderr 泄露、目录双向重叠和非法配置档名称等失败。
+- TDD GREEN：完成可执行文件定位、参数数组进程执行、稳定字段解析、合法配置档枚举、能力关闭策略和状态目录绝对路径 dry-run。
+- 审查修正：非零退出不再向调用方展示 stderr；状态目录与 MAA 配置目录任一方向重叠都会拒绝；过滤空白、`.`、`..` 和控制字符配置档名称；固定 fake 夹具锁文件，避免测试污染工作树。
+- 自动验证：`cargo fmt --check`、`cargo build --locked`、严格 clippy 和 `cargo test --locked --all-targets` 全部通过；测试计数为 1 个单元测试、16 个环境测试和 1 个 stdio 协议测试。
+- 人工环境阻塞：PATH、MAA 源码目录及当前工作区均未发现真实 `maa.exe` 或 `maa-cli.exe`，因此未声称真实 MaaCore dry-run 成功。发布前须在已安装并配置 MaaCore/profile 的 Windows 环境补做该项。
+- 最终结论：阶段 1 的代码与自动验收无 Critical 或 Important 遗留问题；真实 `maa-cli` 兼容性保留为明确的发布前人工验收项，可以进入阶段 2。
 
 ---
 
