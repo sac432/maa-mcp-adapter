@@ -575,15 +575,15 @@ git commit -m "feat: generate validated maa task files"
 
 ### 要完成的任务
 
-- [ ] **任务 5.1：实现 `check_environment`**
+- [x] **任务 5.1：实现 `check_environment`**
 
   调用阶段 1 的检查服务；返回可执行文件发现方式、版本、能力、配置档名称、`can_plan`、`can_execute` 和安全诊断。不得返回配置内容或完整环境变量。
 
-- [ ] **任务 5.2：实现 `get_daily_options`**
+- [x] **任务 5.2：实现 `get_daily_options`**
 
   返回七类白名单任务、四类战斗语义选择、需要收集的字段以及固定安全限制。不得访问网络获取活动内容。
 
-- [ ] **任务 5.3：实现计划 Tools**
+- [x] **任务 5.3：实现计划 Tools**
 
   注册：
 
@@ -596,19 +596,19 @@ cancel_daily_plan
 
   输入结构通过 Schemars 生成，所有 struct 使用 `deny_unknown_fields`。
 
-- [ ] **任务 5.4：配置 Tool annotations**
+- [x] **任务 5.4：配置 Tool annotations**
 
   `check_environment`、`get_daily_options` 标记为只读。`preview_daily_plan` 不产生外部 MAA 副作用，但会把完整计划从 `Draft` 持久化为 `Ready`，因此设置 `readOnlyHint = false`、`destructiveHint = false`、`idempotentHint = true`。创建、更新和取消同样准确标记为本地状态修改，不得标记为外部 MAA 执行。
 
-- [ ] **任务 5.5：实现稳定错误映射**
+- [x] **任务 5.5：实现稳定错误映射**
 
   每个错误包含机器码、中文消息、安全详情和恢复建议。内部路径只在确实需要用户修复配置时返回。
 
-- [ ] **任务 5.6：编写 MCP 协议测试**
+- [x] **任务 5.6：编写 MCP 协议测试**
 
   通过真实 STDIO 测试 `tools/list` 中恰好出现六个阶段内 Tool、Schema 拒绝未知字段、完整创建—更新—预览—取消流程。
 
-- [ ] **任务 5.7：提交阶段成果**
+- [x] **任务 5.7：提交阶段成果**
 
 ```text
 git add src/server.rs src/tools tests/stdio_protocol.rs tests/environment_tools.rs tests/plan_tools.rs
@@ -617,12 +617,24 @@ git commit -m "feat: expose daily planning MCP tools"
 
 ### 阶段验收标准
 
-- [ ] `tools/list` 中名称、说明、输入 Schema 和 annotations 与设计一致。
-- [ ] 一句话意图可以创建 `Draft`，返回缺失字段和一个明确的下一问题。
-- [ ] 未知字段、禁止字段和非法 ID 都返回稳定结构化错误。
-- [ ] 任何阶段 5 Tool 都不会创建 `maa-cli` 进程。
-- [ ] stdout 仍只包含 MCP 协议数据。
-- [ ] 三条必需 Cargo 检查全部通过。
+- [x] `tools/list` 中名称、说明、输入 Schema 和 annotations 与设计一致。
+- [x] 一句话意图可以创建 `Draft`，返回缺失字段和一个明确的下一问题。
+- [x] 未知字段、禁止字段和非法 ID 都返回稳定结构化错误。
+- [x] 除 `check_environment` 的有界只读能力探测外，其余阶段 5 Tool 不创建 `maa-cli` 进程；所有阶段 5 Tool 都不会启动日常执行或游戏。
+- [x] stdout 仍只包含 MCP 协议数据。
+- [x] 三条必需 Cargo 检查全部通过。
+
+### 阶段审查记录
+
+- 实现提交：`1fa903b feat: expose daily planning MCP tools`
+- TDD RED：先通过真实 STDIO 将 `tools/list` 从空列表固定为恰好六个 Tool；随后覆盖一句话创建 Draft、严格未知字段、禁止 `stone`、完整创建—更新—预览—取消流程、非法/不存在 ID、revision 冲突和损坏配置。
+- TDD GREEN：`check_environment` 复用阶段 1 探测并只返回发现来源、版本、能力、配置档和安全诊断；`get_daily_options` 静态返回七类任务、四类战斗语义与固定安全限制，不访问网络；四个计划 Tool 仅调用既有计划和存储服务。
+- Schema 与错误：所有输入及嵌套任务/patch 使用 Schemars 和 `deny_unknown_fields`；Tool 错误统一包含机器码、中文消息、安全详情和恢复建议，只有损坏配置需要用户修复时才返回 `config.toml` 路径。
+- annotations：环境和选项 Tool 只读；创建为非破坏、非幂等本地写入；预览为非破坏、幂等本地写入；更新和取消为破坏性、幂等本地状态修改；全部 `openWorldHint = false`，均不表示外部 MAA 执行。
+- 审查修正：把启动配置读取从 `tools` 移到独立 `runtime` 应用层，确保 Tool 层不直接读文件或创建进程；并修正文档中“环境检查需要探测进程”与“所有 Tool 不创建进程”的矛盾，冻结为“仅环境检查可做有界只读探测，任何 Tool 都不得启动日常执行或游戏”。
+- 自动验证：根 crate 与 fake 夹具格式检查、`cargo build`、严格 clippy 和全量 `cargo test` 全部通过；测试计数为 1 个单元测试、16 个环境测试、24 个计划/存储/服务测试、4 个 stdio 协议测试和 7 个任务文件测试，共 52 项。
+- 人工环境阻塞：本机仍未发现真实 `maa.exe`/`maa-cli.exe`，因此 `check_environment` 的真实 MAA 输出兼容性与真实 MaaCore dry-run 仍是发布前人工验收项。
+- 最终结论：自动化范围内无 Critical 或 Important 遗留问题；阶段 5 可以进入阶段 6。
 
 ---
 
