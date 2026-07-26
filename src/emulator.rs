@@ -42,6 +42,16 @@ impl StartedEmulator {
     }
 }
 
+/// 终态时关闭模拟器的方式，由启动方在标记文件中记录。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "method", rename_all = "snake_case", deny_unknown_fields)]
+pub enum EmulatorStop {
+    /// 终止启动时记录的进程；PID 与创建时间双重匹配才生效。
+    Terminate { pid: u32, creation_time_100ns: u64 },
+    /// 执行一次用户配置的关机命令（启动器型 CLI，如 MuMuManager shutdown）。
+    Command { path: PathBuf, args: Vec<String> },
+}
+
 /// 确保模拟器在线。已在线（地址可连通）时不做任何事并返回 `None`；
 /// 否则启动配置的可执行文件并等待地址可连通（未配置地址时只做定长等待）。
 pub async fn ensure_running(
@@ -55,6 +65,7 @@ pub async fn ensure_running(
 
     let mut command = std::process::Command::new(&config.path);
     command
+        .args(&config.args)
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::null());
@@ -109,20 +120,40 @@ pub fn marker_path(run_directory: &Path) -> PathBuf {
     run_directory.join("emulator.json")
 }
 
-pub fn write_marker(run_directory: &Path, started: &StartedEmulator) -> std::io::Result<()> {
-    let bytes = serde_json::to_vec_pretty(started).expect("started emulator is serializable");
+pub fn write_marker(run_directory: &Path, stop: &EmulatorStop) -> std::io::Result<()> {
+    let bytes = serde_json::to_vec_pretty(stop).expect("emulator stop marker is serializable");
     std::fs::write(marker_path(run_directory), bytes)
 }
 
-/// 终态清理：若运行目录中记录了由本适配器启动的模拟器，则在身份完全
-/// 匹配时关闭它。任何失败都只放弃关闭，绝不触碰其他进程。
+/// 终态清理：执行运行目录中记录的关停方式。`Terminate` 只在 PID 与创建
+/// 时间完全匹配时生效；`Command` 执行一次用户配置的关机命令。任何失败都
+/// 只放弃关闭，绝不触碰其他进程。
 pub fn stop_marked_emulator(run_directory: &Path) {
     let path = marker_path(run_directory);
     let Ok(bytes) = std::fs::read(&path) else {
         return;
     };
-    if let Ok(started) = serde_json::from_slice::<StartedEmulator>(&bytes) {
-        let _ = terminate_if_matches(started.pid, started.identity());
+    match serde_json::from_slice::<EmulatorStop>(&bytes) {
+        Ok(EmulatorStop::Terminate {
+            pid,
+            creation_time_100ns,
+        }) => {
+            let _ = terminate_if_matches(
+                pid,
+                ProcessStartIdentity {
+                    creation_time_100ns,
+                },
+            );
+        }
+        Ok(EmulatorStop::Command { path, args }) => {
+            let _ = std::process::Command::new(path)
+                .args(args)
+                .stdin(Stdio::null())
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .status();
+        }
+        Err(_) => {}
     }
     let _ = std::fs::remove_file(&path);
 }
@@ -141,9 +172,11 @@ mod tests {
         let address = listener.local_addr().expect("listener address").to_string();
         let config = EmulatorConfig {
             path: std::path::PathBuf::from("Z:/definitely/not/a/real/emulator.exe"),
+            args: Vec::new(),
             address: Some(address),
             startup_wait_seconds: 1,
             stop_after_run: true,
+            stop_args: None,
         };
 
         let started = ensure_running(&config).await.expect("no spawn needed");
@@ -155,9 +188,11 @@ mod tests {
     async fn a_missing_executable_fails_before_touching_anything() {
         let config = EmulatorConfig {
             path: std::path::PathBuf::from("Z:/definitely/not/a/real/emulator.exe"),
+            args: Vec::new(),
             address: Some("127.0.0.1:9".to_owned()),
             startup_wait_seconds: 1,
             stop_after_run: false,
+            stop_args: None,
         };
 
         let error = ensure_running(&config)
@@ -167,14 +202,43 @@ mod tests {
         assert!(matches!(error, EmulatorError::Spawn { .. }));
     }
 
+    #[test]
+    fn a_command_marker_runs_the_configured_shutdown_once() {
+        let temp = tempfile::tempdir().expect("run directory");
+        let sentinel = temp.path().join("stopped-sentinel");
+        let comspec = std::env::var_os("ComSpec").expect("cmd.exe available");
+        super::write_marker(
+            temp.path(),
+            &super::EmulatorStop::Command {
+                path: comspec.into(),
+                args: vec![
+                    "/C".to_owned(),
+                    "mkdir".to_owned(),
+                    sentinel.display().to_string(),
+                ],
+            },
+        )
+        .expect("write marker");
+
+        super::stop_marked_emulator(temp.path());
+
+        assert!(sentinel.is_dir(), "shutdown command executed");
+        assert!(
+            !super::marker_path(temp.path()).exists(),
+            "marker consumed exactly once"
+        );
+    }
+
     #[tokio::test]
     async fn an_unreachable_address_reports_not_ready_within_the_deadline() {
         let helper = std::env::var_os("ComSpec").expect("cmd.exe available");
         let config = EmulatorConfig {
             path: std::path::PathBuf::from(helper),
+            args: Vec::new(),
             address: Some("127.0.0.1:9".to_owned()),
             startup_wait_seconds: 1,
             stop_after_run: false,
+            stop_args: None,
         };
 
         let started = tokio::time::timeout(Duration::from_secs(10), ensure_running(&config))

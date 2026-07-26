@@ -247,7 +247,17 @@ impl ExecutionService {
         if let (Some(started), Some(config)) = (emulator.as_ref(), self.emulator.as_ref())
             && config.stop_after_run
         {
-            let _ = crate::emulator::write_marker(run_directory, started);
+            let stop = match &config.stop_args {
+                Some(args) => crate::emulator::EmulatorStop::Command {
+                    path: config.path.clone(),
+                    args: args.clone(),
+                },
+                None => crate::emulator::EmulatorStop::Terminate {
+                    pid: started.pid,
+                    creation_time_100ns: started.creation_time_100ns,
+                },
+            };
+            let _ = crate::emulator::write_marker(run_directory, &stop);
         }
         if let Err(error) = active_lock.commit() {
             self.mark_running_failed(prepared);

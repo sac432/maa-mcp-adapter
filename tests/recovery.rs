@@ -208,7 +208,7 @@ async fn terminal_run_stops_only_the_recorded_adapter_started_emulator() {
     let run_directory = state.join("runs").join(launched.record.run_id.to_string());
     maa_mcp_adapter::emulator::write_marker(
         &run_directory,
-        &maa_mcp_adapter::emulator::StartedEmulator {
+        &maa_mcp_adapter::emulator::EmulatorStop::Terminate {
             pid: emulator.id(),
             creation_time_100ns: identity.creation_time_100ns,
         },

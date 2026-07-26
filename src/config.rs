@@ -25,11 +25,17 @@ pub struct AdapterConfig {
 pub struct EmulatorConfig {
     pub path: PathBuf,
     #[serde(default)]
+    pub args: Vec<String>,
+    #[serde(default)]
     pub address: Option<String>,
     #[serde(default = "default_emulator_wait_seconds")]
     pub startup_wait_seconds: u16,
     #[serde(default)]
     pub stop_after_run: bool,
+    /// 配置后，`stop_after_run` 以 `path` + `stop_args` 执行一次关机命令
+    /// （适合 MuMuManager 这类启动器型 CLI），而不是终止启动时记录的进程。
+    #[serde(default)]
+    pub stop_args: Option<Vec<String>>,
 }
 
 fn default_emulator_wait_seconds() -> u16 {
@@ -156,7 +162,7 @@ mod tests {
     #[test]
     fn emulator_section_parses_with_safe_defaults_and_rejects_unknown_fields() {
         let config = AdapterConfig::from_toml(
-            "maa_gui_config = 'C:/MAA2/config/gui.json'\n\n[emulator]\npath = 'C:/emu/player.exe'\naddress = \"127.0.0.1:16384\"\n",
+            "maa_gui_config = 'C:/MAA2/config/gui.json'\n\n[emulator]\npath = 'C:/emu/MuMuManager.exe'\nargs = [\"control\", \"-v\", \"0\", \"launch\"]\naddress = \"127.0.0.1:16384\"\nstop_args = [\"control\", \"-v\", \"0\", \"shutdown\"]\n",
         )
         .expect("emulator config");
         assert!(config.maa_gui_config.is_some());
@@ -164,6 +170,18 @@ mod tests {
         assert_eq!(emulator.startup_wait_seconds, 60);
         assert!(!emulator.stop_after_run);
         assert_eq!(emulator.address.as_deref(), Some("127.0.0.1:16384"));
+        assert_eq!(emulator.args, ["control", "-v", "0", "launch"]);
+        assert_eq!(
+            emulator.stop_args.as_deref(),
+            Some(
+                &[
+                    "control".to_owned(),
+                    "-v".into(),
+                    "0".into(),
+                    "shutdown".into()
+                ][..]
+            )
+        );
 
         assert!(AdapterConfig::from_toml("[emulator]\npath = 'x'\nauto_kill = true\n").is_err());
         assert!(AdapterConfig::from_toml("[emulator]\naddress = \"127.0.0.1:1\"\n").is_err());

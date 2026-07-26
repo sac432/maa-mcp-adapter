@@ -23,10 +23,12 @@ confirmation = "elicitation"
 maa_gui_config = 'C:\MAA\config\gui.json'
 
 [emulator]
-path = 'D:\Program Files\Netease\MuMu Player 12\shell\MuMuPlayer.exe'
+path = 'D:\Program Files\Netease\MuMu Player 12\nx_main\MuMuManager.exe'
+args = ["control", "-v", "0", "launch"]
 address = "127.0.0.1:16384"
-startup_wait_seconds = 60
+startup_wait_seconds = 120
 stop_after_run = false
+stop_args = ["control", "-v", "0", "shutdown"]
 ```
 
 Windows 路径建议使用 TOML 单引号字面字符串，以免对反斜杠重复转义。所有路径必须是绝对路径，不能包含 `.` 或 `..` 路径段。
@@ -108,11 +110,18 @@ locks\active-run.lock
 （未配置 `address` 时只做定长等待）。
 
 - `path`：模拟器可执行文件的绝对路径（必填）。
+- `args`：启动参数数组，默认空。直接启动主程序通常只会打开设备管理
+  界面；使用官方 CLI 才能自动开机。MuMu 12 示例：`MuMuManager.exe`
+  加 `["control", "-v", "0", "launch"]` 直接开机 0 号设备。
 - `address`：ADB 连接地址，如 `"127.0.0.1:16384"`，用于在线探测。
 - `startup_wait_seconds`：启动等待上限，默认 `60`。
 - `stop_after_run`：默认 `false`。为 `true` 时，运行进入终态后关闭
-  **由适配器本次启动**的模拟器进程（PID 与进程创建时间双重匹配才关闭；
-  已在运行的模拟器永远不会被关闭）。
+  由适配器本次启动的模拟器。
+- `stop_args`：可选。配置后，关闭动作改为以 `path` + `stop_args` 执行
+  一次关机命令（适合 MuMuManager 这类"启动器进程会立即退出"的 CLI，
+  例如 `["control", "-v", "0", "shutdown"]`）；未配置时按启动记录的
+  PID 与进程创建时间双重匹配终止进程。已在运行的模拟器（适配器未
+  启动过的）在两种方式下都不会被关闭。
 
 ## 修改配置后的步骤
 
