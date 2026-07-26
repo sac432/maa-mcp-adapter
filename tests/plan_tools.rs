@@ -529,6 +529,27 @@ fn summary_without_optional_task_families_still_states_all_safety_decisions() {
 }
 
 #[test]
+fn summary_states_merged_award_collection_when_daily_and_weekly_differ() {
+    let mut plan = complete_plan();
+    let DailyTask::Award(award) = &mut plan.tasks[5] else {
+        panic!("expected Award");
+    };
+    award.daily = Some(true);
+    award.weekly = Some(false);
+
+    let summary = summarize_plan(&plan).expect("summarize plan with split award choice");
+
+    assert!(
+        summary.contains("日常与周常任务奖励：是（MAA 合并领取，不可单独选择）"),
+        "summary must state the merged award behavior: {summary}"
+    );
+    assert!(
+        !summary.contains("周常：否"),
+        "summary must not promise weekly rewards can be skipped separately: {summary}"
+    );
+}
+
+#[test]
 fn canonical_plan_contains_non_overridable_safety_constants() {
     let value = serde_json::to_value(normalize_plan(&complete_plan()).expect("normalize plan"))
         .expect("serialize normalized plan");

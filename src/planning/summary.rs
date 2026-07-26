@@ -70,9 +70,8 @@ pub fn summarize_plan(plan: &DailyPlan) -> Result<String, DomainError> {
                 event,
             } => {
                 lines.push(format!(
-                    "奖励：日常：{}；周常：{}；邮件：{}；活动：{}",
-                    yes_no(daily),
-                    yes_no(weekly),
+                    "奖励：日常与周常任务奖励：{}（MAA 合并领取，不可单独选择）；邮件：{}；活动：{}",
+                    yes_no(daily || weekly),
                     yes_no(mail),
                     yes_no(event)
                 ));
