@@ -5,6 +5,7 @@ Unofficial MCP adapter for MAA.
 让 Claude Code、Codex、Cursor 等任何支持 MCP 的 AI Agent，在明确的安全边界内
 一句话完成 [MAA](https://maa.plus)（明日方舟小助手）日常：自动开模拟器、
 按你保存的 MAA 设置执行日常、跑完关闭——每一步真正动手前都有可核对的确认。
+目前只是初版功能，最终目的是一句话让agent通过maa完成所有maa能完成的事以及maa做不到的事（例如maa 搜索攻略+ maa自动挑战指定关卡）
 
 > [!IMPORTANT]
 > 本项目是独立的非官方适配器，与 MAA Team 无关联，未获 MAA Team 认可或背书。
