@@ -85,6 +85,17 @@ maa-cli 本体放哪都可以：要么在 `PATH` 中，要么在本适配器
 
 ## 🚀 安装
 
+### 推荐使用 Agent 一键安装与配置（免费可以用trae）
+
+在你的 Agent 环境中直接输入：
+
+> 帮我安装 [sac432/maa-mcp-adapter](https://github.com/sac432/maa-mcp-adapter.git) 到我的 Agent（例如 Trae），完成一键安装与配置。
+
+之后可以直接跳到快速开始了
+
+
+
+
 **方式一：下载发布包**（推荐）
 
 从 [Releases](https://github.com/sac432/maa-mcp-adapter/releases) 下载
