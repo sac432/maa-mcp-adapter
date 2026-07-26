@@ -3,7 +3,7 @@ use rmcp::{Peer, RoleServer};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use crate::config::ConfigError;
+use crate::config::{ConfigError, ConfirmationMode};
 use crate::execution::{ExecutionError, ExecutionService};
 use crate::maa_cli::MaaCliAdapter;
 use crate::runs::{LogStream, RunControlError, RunControlService};
@@ -112,45 +112,48 @@ pub async fn execute_daily_plan(
         .require_summary(&input.expected_summary)
         .map_err(ToolError::from_execution)
         .map_err(rmcp::Json)?;
-    let message = format!(
-        "{}\n计划哈希：{}\n\n是否确认执行以上准确计划？",
-        prepared.summary(),
-        prepared.plan_hash().as_str()
-    );
-
-    let confirmation = match peer.elicit::<ExecutionConfirmation>(message).await {
-        Ok(Some(confirmation)) => confirmation,
-        Ok(None) | Err(ElicitationError::UserCancelled) => {
-            return Ok(rmcp::Json(not_started("cancelled", prepared.summary())));
-        }
-        Err(ElicitationError::UserDeclined) => {
-            return Ok(rmcp::Json(not_started("declined", prepared.summary())));
-        }
-        Err(ElicitationError::CapabilityNotSupported) => {
-            return Err(rmcp::Json(ToolError::new(
-                "CLIENT_ELICITATION_UNSUPPORTED",
-                "当前 MCP 客户端未声明表单 elicitation 能力。",
-                Vec::new(),
-                vec!["使用支持 MCP elicitation 的客户端重新连接后再执行。".to_owned()],
-            )));
-        }
-        Err(_) => {
-            return Err(rmcp::Json(ToolError::new(
-                "ELICITATION_FAILED",
-                "无法取得可靠的执行确认。",
-                Vec::new(),
-                vec!["重新查看计划预览，并显式发起新的执行请求。".to_owned()],
-            )));
-        }
-    };
-    if !confirmation.confirmed {
-        return Ok(rmcp::Json(not_started("declined", prepared.summary())));
-    }
-
     let config = runtime
         .config()
         .map_err(ToolError::from_runtime)
         .map_err(rmcp::Json)?;
+
+    if config.confirmation == ConfirmationMode::Elicitation {
+        let message = format!(
+            "{}\n计划哈希：{}\n\n是否确认执行以上准确计划？",
+            prepared.summary(),
+            prepared.plan_hash().as_str()
+        );
+
+        let confirmation = match peer.elicit::<ExecutionConfirmation>(message).await {
+            Ok(Some(confirmation)) => confirmation,
+            Ok(None) | Err(ElicitationError::UserCancelled) => {
+                return Ok(rmcp::Json(not_started("cancelled", prepared.summary())));
+            }
+            Err(ElicitationError::UserDeclined) => {
+                return Ok(rmcp::Json(not_started("declined", prepared.summary())));
+            }
+            Err(ElicitationError::CapabilityNotSupported) => {
+                return Err(rmcp::Json(ToolError::new(
+                    "CLIENT_ELICITATION_UNSUPPORTED",
+                    "当前 MCP 客户端未声明表单 elicitation 能力。",
+                    Vec::new(),
+                    vec!["使用支持 MCP elicitation 的客户端重新连接后再执行。".to_owned()],
+                )));
+            }
+            Err(_) => {
+                return Err(rmcp::Json(ToolError::new(
+                    "ELICITATION_FAILED",
+                    "无法取得可靠的执行确认。",
+                    Vec::new(),
+                    vec!["重新查看计划预览，并显式发起新的执行请求。".to_owned()],
+                )));
+            }
+        };
+        if !confirmation.confirmed {
+            return Ok(rmcp::Json(not_started("declined", prepared.summary())));
+        }
+    }
+
     let resolved = config
         .resolve_maa_executable(path_search_value().as_deref())
         .map_err(maa_config_error)

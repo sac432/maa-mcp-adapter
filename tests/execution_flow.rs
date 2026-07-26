@@ -412,6 +412,42 @@ fn execute_tool_rejects_a_summary_that_differs_from_the_server_text() {
 }
 
 #[test]
+fn confirmation_none_config_executes_without_elicitation() {
+    let data = tempfile::tempdir().expect("temporary app data");
+    let state = data.path().join("maa-mcp-adapter");
+    fs::create_dir(&state).expect("state directory");
+    let fake_root = tempfile::tempdir().expect("fake maa root");
+    let fake = configured_background_fake(fake_root.path());
+    let executable = fake
+        .executable()
+        .display()
+        .to_string()
+        .replace('\\', "\\\\");
+    fs::write(
+        state.join("config.toml"),
+        format!("maa_executable = \"{executable}\"\nconfirmation = \"none\"\n"),
+    )
+    .expect("adapter config");
+    let (plan_id, expected_hash, expected_summary) = ready_plan(&state);
+    let mut client = ExecutionMcpClient::spawn(data.path(), json!({}));
+
+    let started = client.execute(&plan_id.to_string(), &expected_hash, &expected_summary);
+
+    let output = &started["result"]["structuredContent"];
+    assert_eq!(output["outcome"], "started");
+    let run_id = RunId::from_str(output["run_id"].as_str().expect("run id")).expect("run id uuid");
+    client.finish();
+
+    let record = FileRunRepository::new(state.clone())
+        .expect("run repository")
+        .load(&run_id)
+        .expect("run record");
+    maa_mcp_adapter::platform::terminate_if_matches(record.pid, record.process_start_identity)
+        .expect("terminate background fake");
+    release_active_run_lock(&state, &run_id).expect("release active lock");
+}
+
+#[test]
 fn execute_tool_handles_decline_cancel_and_accept_with_exact_summary() {
     let data = tempfile::tempdir().expect("temporary app data");
     let state = data.path().join("maa-mcp-adapter");

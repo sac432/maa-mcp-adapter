@@ -12,6 +12,19 @@ pub struct AdapterConfig {
     pub retention_days: Option<u16>,
     #[serde(default)]
     pub redaction_patterns: Vec<String>,
+    #[serde(default)]
+    pub confirmation: ConfirmationMode,
+}
+
+/// 执行前确认方式。默认要求 MCP form elicitation；`none` 仅适用于
+/// 用户明确接受风险的单人可信环境，此时 `expected_summary` 的逐字校验
+/// 和客户端工具授权界面成为唯一的人工可见关卡。
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ConfirmationMode {
+    #[default]
+    Elicitation,
+    None,
 }
 
 impl AdapterConfig {
@@ -97,5 +110,26 @@ impl AdapterConfig {
         }
 
         Err(ConfigError::MaaCliNotFound)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{AdapterConfig, ConfirmationMode};
+
+    #[test]
+    fn confirmation_defaults_to_elicitation_and_accepts_only_known_modes() {
+        let default = AdapterConfig::from_toml("").expect("empty config");
+        assert_eq!(default.confirmation, ConfirmationMode::Elicitation);
+
+        let explicit =
+            AdapterConfig::from_toml("confirmation = \"elicitation\"\n").expect("explicit mode");
+        assert_eq!(explicit.confirmation, ConfirmationMode::Elicitation);
+
+        let none = AdapterConfig::from_toml("confirmation = \"none\"\n").expect("opt-out mode");
+        assert_eq!(none.confirmation, ConfirmationMode::None);
+
+        assert!(AdapterConfig::from_toml("confirmation = \"auto\"\n").is_err());
+        assert!(AdapterConfig::from_toml("confirmation = true\n").is_err());
     }
 }
