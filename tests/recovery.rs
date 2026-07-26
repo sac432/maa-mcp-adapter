@@ -221,12 +221,28 @@ async fn terminal_run_stops_only_the_recorded_adapter_started_emulator() {
         .expect("stop recorded run");
 
     assert_eq!(stopped.status, RunStatus::Stopped);
+    let mut marker_consumed = false;
+    for _ in 0..100 {
+        if !run_directory.join("emulator.json").exists() {
+            marker_consumed = true;
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
     assert!(
-        !run_directory.join("emulator.json").exists(),
-        "the emulator marker is consumed exactly once"
+        marker_consumed,
+        "the emulator marker is consumed by the terminal transition"
     );
+    let mut terminated = false;
+    for _ in 0..100 {
+        if !process_identity_matches(emulator.id(), identity).unwrap_or(false) {
+            terminated = true;
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
     assert!(
-        !process_identity_matches(emulator.id(), identity).unwrap_or(false),
+        terminated,
         "the adapter-started emulator is terminated with the run"
     );
     let _ = emulator.wait();

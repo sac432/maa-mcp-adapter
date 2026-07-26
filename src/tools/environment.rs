@@ -183,8 +183,22 @@ fn discover_gui_settings(path: &std::path::Path) -> Result<GuiDiscoveryOutput, S
         .map_err(|_| format!("无法读取 MAA 图形版配置：{}", path.display()))?;
     let value: serde_json::Value = serde_json::from_str(&contents)
         .map_err(|_| format!("MAA 图形版配置不是有效 JSON：{}", path.display()))?;
+    let current = value
+        .get("Current")
+        .and_then(serde_json::Value::as_str)
+        .unwrap_or("Default");
+    let section = value
+        .get("Configurations")
+        .and_then(|configurations| {
+            configurations.get(current).or_else(|| {
+                configurations
+                    .as_object()
+                    .and_then(|entries| entries.values().next())
+            })
+        })
+        .unwrap_or(&value);
     let text = |key: &str| {
-        value
+        section
             .get(key)
             .and_then(serde_json::Value::as_str)
             .map(str::trim)
@@ -357,17 +371,26 @@ mod tests {
     use super::discover_gui_settings;
 
     #[test]
-    fn gui_discovery_reads_only_known_string_keys() {
+    fn gui_discovery_resolves_the_current_configuration_section() {
         let temp = tempfile::tempdir().expect("temporary directory");
         let path = temp.path().join("gui.json");
         std::fs::write(
             &path,
             r#"{
-                "Connect.AdbPath": "D:\\MuMu\\adb.exe",
-                "Connect.Address": "127.0.0.1:16384",
-                "Connect.MuMu12EmulatorPath": "C:\\Program Files\\Netease\\MuMuPlayer-12.0",
-                "Start.EmulatorPath": "",
-                "Connect.Secret": "must-not-appear"
+                "Configurations": {
+                    "Default": {
+                        "Connect.AdbPath": "unused",
+                        "Connect.Address": "unused"
+                    },
+                    "Real": {
+                        "Connect.AdbPath": "D:\\MuMu\\adb.exe",
+                        "Connect.Address": "127.0.0.1:16384",
+                        "Connect.MuMu12EmulatorPath": "C:\\Program Files\\Netease\\MuMuPlayer-12.0",
+                        "Start.EmulatorPath": "",
+                        "Connect.Secret": "must-not-appear"
+                    }
+                },
+                "Current": "Real"
             }"#,
         )
         .expect("write gui json");
@@ -384,5 +407,21 @@ mod tests {
 
         std::fs::write(&path, "not json").expect("write invalid contents");
         assert!(discover_gui_settings(&path).is_err());
+    }
+
+    #[test]
+    fn gui_discovery_accepts_a_flat_legacy_layout() {
+        let temp = tempfile::tempdir().expect("temporary directory");
+        let path = temp.path().join("gui.json");
+        std::fs::write(
+            &path,
+            r#"{"Connect.AdbPath": "adb.exe", "Connect.Address": "emulator-5554"}"#,
+        )
+        .expect("write gui json");
+
+        let discovery = discover_gui_settings(&path).expect("parse flat gui json");
+
+        assert_eq!(discovery.adb_path.as_deref(), Some("adb.exe"));
+        assert_eq!(discovery.address.as_deref(), Some("emulator-5554"));
     }
 }
