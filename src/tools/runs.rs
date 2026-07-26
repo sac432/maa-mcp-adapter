@@ -15,6 +15,11 @@ use super::{SharedRuntime, ToolError, ToolResult, parse_plan_id, parse_run_id, p
 pub struct ExecuteDailyPlanInput {
     pub plan_id: String,
     pub expected_plan_hash: String,
+    #[schemars(
+        description = "preview_daily_plan 返回的 summary 原文。服务端逐字核对后才会执行；\
+                       该文本会随调用参数展示，供用户在授权界面直接核对计划内容。"
+    )]
+    pub expected_summary: String,
 }
 
 #[derive(Debug, Serialize, JsonSchema)]
@@ -101,6 +106,10 @@ pub async fn execute_daily_plan(
     let execution = ExecutionService::new(state_directory.to_path_buf());
     let prepared = execution
         .prepare(&plan_id, &input.expected_plan_hash)
+        .map_err(ToolError::from_execution)
+        .map_err(rmcp::Json)?;
+    prepared
+        .require_summary(&input.expected_summary)
         .map_err(ToolError::from_execution)
         .map_err(rmcp::Json)?;
     let message = format!(
@@ -294,6 +303,10 @@ impl ToolError {
             "PLAN_HASH_INVALID" | "PLAN_HASH_MISMATCH" => (
                 "请求中的计划哈希与当前 Ready 计划不一致。",
                 "重新调用 preview_daily_plan，并使用其准确 plan_hash。",
+            ),
+            "PLAN_SUMMARY_MISMATCH" => (
+                "请求中的 expected_summary 与服务端生成的计划摘要不一致。",
+                "重新调用 preview_daily_plan，并将其 summary 原样作为 expected_summary 传入。",
             ),
             "PLAN_CHANGED" => (
                 "计划在确认前后发生了变化。",

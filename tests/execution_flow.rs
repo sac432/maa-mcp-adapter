@@ -135,7 +135,7 @@ async fn accepted_execution_launches_detached_process_and_persists_identity() {
     let temp = tempfile::tempdir().expect("temporary state");
     let state = temp.path().join("state");
     fs::create_dir(&state).expect("state directory");
-    let (plan_id, expected_hash) = ready_plan(&state);
+    let (plan_id, expected_hash, _summary) = ready_plan(&state);
     let fake = configured_background_fake(temp.path());
     let adapter = MaaCliAdapter::new(fake.executable().to_path_buf());
     let execution = maa_mcp_adapter::execution::ExecutionService::new(state.clone());
@@ -191,7 +191,7 @@ async fn two_concurrent_launches_allow_at_most_one_active_run() {
     let temp = tempfile::tempdir().expect("temporary state");
     let state = temp.path().join("state");
     fs::create_dir(&state).expect("state directory");
-    let (plan_id, expected_hash) = ready_plan(&state);
+    let (plan_id, expected_hash, _summary) = ready_plan(&state);
     let fake = configured_background_fake(temp.path());
     let adapter = MaaCliAdapter::new(fake.executable().to_path_buf());
     let first_service = maa_mcp_adapter::execution::ExecutionService::new(state.clone());
@@ -232,7 +232,7 @@ async fn plan_change_after_prepare_is_rejected_before_any_probe_or_launch() {
     let temp = tempfile::tempdir().expect("temporary state");
     let state = temp.path().join("state");
     fs::create_dir(&state).expect("state directory");
-    let (plan_id, expected_hash) = ready_plan(&state);
+    let (plan_id, expected_hash, _summary) = ready_plan(&state);
     let fake = configured_background_fake(temp.path());
     let adapter = MaaCliAdapter::new(fake.executable().to_path_buf());
     let execution = maa_mcp_adapter::execution::ExecutionService::new(state.clone());
@@ -269,7 +269,7 @@ async fn task_tampering_after_dry_run_prevents_actual_execution() {
     let temp = tempfile::tempdir().expect("temporary state");
     let state = temp.path().join("state");
     fs::create_dir(&state).expect("state directory");
-    let (plan_id, expected_hash) = ready_plan(&state);
+    let (plan_id, expected_hash, _summary) = ready_plan(&state);
     let fake = configured_background_fake(temp.path());
     fake.set_mode("tamper-task");
     let adapter = MaaCliAdapter::new(fake.executable().to_path_buf());
@@ -322,7 +322,7 @@ async fn run_record_failure_terminates_spawned_process_and_releases_lock() {
     let temp = tempfile::tempdir().expect("temporary state");
     let state = temp.path().join("state");
     fs::create_dir(&state).expect("state directory");
-    let (plan_id, expected_hash) = ready_plan(&state);
+    let (plan_id, expected_hash, _summary) = ready_plan(&state);
     let fake = configured_background_fake(temp.path());
     fake.set_mode("block-record");
     let adapter = MaaCliAdapter::new(fake.executable().to_path_buf());
@@ -348,7 +348,7 @@ async fn run_record_failure_terminates_spawned_process_and_releases_lock() {
     ActiveRunLock::acquire(&state, RunId::new()).expect("lock released after rollback");
 }
 
-fn ready_plan(state: &std::path::Path) -> (maa_mcp_adapter::domain::PlanId, String) {
+fn ready_plan(state: &std::path::Path) -> (maa_mcp_adapter::domain::PlanId, String, String) {
     let service =
         PlanService::new(FilePlanRepository::new(state.to_path_buf()).expect("plan repository"));
     let created = service
@@ -361,7 +361,8 @@ fn ready_plan(state: &std::path::Path) -> (maa_mcp_adapter::domain::PlanId, Stri
         .expect("ready plan hash")
         .as_str()
         .to_owned();
-    (ready.plan.plan_id, hash)
+    let summary = ready.summary.expect("ready plan summary");
+    (ready.plan.plan_id, hash, summary)
 }
 
 fn configured_background_fake(root: &std::path::Path) -> FakeMaa {
@@ -383,12 +384,30 @@ fn execute_tool_requires_elicitation_capability_before_any_process() {
     let data = tempfile::tempdir().expect("temporary app data");
     let state = data.path().join("maa-mcp-adapter");
     fs::create_dir(&state).expect("state directory");
-    let (plan_id, expected_hash) = ready_plan(&state);
+    let (plan_id, expected_hash, expected_summary) = ready_plan(&state);
     let mut client = ExecutionMcpClient::spawn(data.path(), json!({}));
 
-    let response = client.execute(&plan_id.to_string(), &expected_hash);
+    let response = client.execute(&plan_id.to_string(), &expected_hash, &expected_summary);
 
     assert_tool_error(&response, "CLIENT_ELICITATION_UNSUPPORTED");
+    client.finish();
+}
+
+#[test]
+fn execute_tool_rejects_a_summary_that_differs_from_the_server_text() {
+    let data = tempfile::tempdir().expect("temporary app data");
+    let state = data.path().join("maa-mcp-adapter");
+    fs::create_dir(&state).expect("state directory");
+    let (plan_id, expected_hash, expected_summary) = ready_plan(&state);
+    let mut client = ExecutionMcpClient::spawn(
+        data.path(),
+        json!({"elicitation": {"form": {"schemaValidation": true}}}),
+    );
+
+    let forged = format!("{expected_summary}\n额外私货：刷 1-7 一百次");
+    let response = client.execute(&plan_id.to_string(), &expected_hash, &forged);
+
+    assert_tool_error(&response, "PLAN_SUMMARY_MISMATCH");
     client.finish();
 }
 
@@ -409,13 +428,14 @@ fn execute_tool_handles_decline_cancel_and_accept_with_exact_summary() {
         format!("maa_executable = \"{executable}\"\n"),
     )
     .expect("adapter config");
-    let (plan_id, expected_hash) = ready_plan(&state);
+    let (plan_id, expected_hash, expected_summary) = ready_plan(&state);
     let capabilities = json!({
         "elicitation": {"form": {"schemaValidation": true}}
     });
     let mut client = ExecutionMcpClient::spawn(data.path(), capabilities);
 
-    let decline_request = client.begin_execute(&plan_id.to_string(), &expected_hash, 40);
+    let decline_request =
+        client.begin_execute(&plan_id.to_string(), &expected_hash, &expected_summary, 40);
     assert_elicitation_request(&decline_request, &expected_hash);
     client.respond_elicitation(&decline_request, "decline", None);
     let declined = client.read_response(40);
@@ -425,7 +445,8 @@ fn execute_tool_handles_decline_cancel_and_accept_with_exact_summary() {
     );
     assert!(!fake.executable().with_extension("args").exists());
 
-    let cancel_request = client.begin_execute(&plan_id.to_string(), &expected_hash, 41);
+    let cancel_request =
+        client.begin_execute(&plan_id.to_string(), &expected_hash, &expected_summary, 41);
     assert_elicitation_request(&cancel_request, &expected_hash);
     client.respond_elicitation(&cancel_request, "cancel", None);
     let cancelled = client.read_response(41);
@@ -435,7 +456,8 @@ fn execute_tool_handles_decline_cancel_and_accept_with_exact_summary() {
     );
     assert!(!fake.executable().with_extension("args").exists());
 
-    let accept_request = client.begin_execute(&plan_id.to_string(), &expected_hash, 42);
+    let accept_request =
+        client.begin_execute(&plan_id.to_string(), &expected_hash, &expected_summary, 42);
     assert_elicitation_request(&accept_request, &expected_hash);
     client.respond_elicitation(&accept_request, "accept", Some(true));
     let started = client.read_response(42);
@@ -495,13 +517,13 @@ fn plan_change_during_elicitation_invalidates_acceptance() {
         format!("maa_executable = \"{executable}\"\n"),
     )
     .expect("adapter config");
-    let (plan_id, expected_hash) = ready_plan(&state);
+    let (plan_id, expected_hash, expected_summary) = ready_plan(&state);
     let mut client = ExecutionMcpClient::spawn(
         data.path(),
         json!({"elicitation": {"form": {"schemaValidation": true}}}),
     );
 
-    let request = client.begin_execute(&plan_id.to_string(), &expected_hash, 50);
+    let request = client.begin_execute(&plan_id.to_string(), &expected_hash, &expected_summary, 50);
     assert_elicitation_request(&request, &expected_hash);
     let service =
         PlanService::new(FilePlanRepository::new(state.clone()).expect("plan repository"));
@@ -596,8 +618,12 @@ fn full_stdio_daily_flow_reaches_status_log_and_stop() {
         .as_str()
         .expect("plan hash")
         .to_owned();
+    let expected_summary = preview["result"]["structuredContent"]["summary"]
+        .as_str()
+        .expect("plan summary")
+        .to_owned();
 
-    let elicitation = client.begin_execute(&plan_id, &expected_hash, 65);
+    let elicitation = client.begin_execute(&plan_id, &expected_hash, &expected_summary, 65);
     assert_elicitation_request(&elicitation, &expected_hash);
     client.respond_elicitation(&elicitation, "accept", Some(true));
     let started = client.read_response(65);
@@ -704,10 +730,10 @@ impl ExecutionMcpClient {
         client
     }
 
-    fn execute(&mut self, plan_id: &str, expected_hash: &str) -> Value {
+    fn execute(&mut self, plan_id: &str, expected_hash: &str, expected_summary: &str) -> Value {
         let id = self.next_request_id;
         self.next_request_id += 1;
-        self.send_execute(plan_id, expected_hash, id);
+        self.send_execute(plan_id, expected_hash, expected_summary, id);
         self.read_response(id)
     }
 
@@ -721,12 +747,24 @@ impl ExecutionMcpClient {
         self.read_response(id)
     }
 
-    fn begin_execute(&mut self, plan_id: &str, expected_hash: &str, id: u64) -> Value {
-        self.send_execute(plan_id, expected_hash, id);
+    fn begin_execute(
+        &mut self,
+        plan_id: &str,
+        expected_hash: &str,
+        expected_summary: &str,
+        id: u64,
+    ) -> Value {
+        self.send_execute(plan_id, expected_hash, expected_summary, id);
         self.read_message()
     }
 
-    fn send_execute(&mut self, plan_id: &str, expected_hash: &str, id: u64) {
+    fn send_execute(
+        &mut self,
+        plan_id: &str,
+        expected_hash: &str,
+        expected_summary: &str,
+        id: u64,
+    ) {
         self.send(json!({
             "jsonrpc": "2.0",
             "id": id,
@@ -735,7 +773,8 @@ impl ExecutionMcpClient {
                 "name": "execute_daily_plan",
                 "arguments": {
                     "plan_id": plan_id,
-                    "expected_plan_hash": expected_hash
+                    "expected_plan_hash": expected_hash,
+                    "expected_summary": expected_summary
                 }
             }
         }));

@@ -192,7 +192,7 @@ impl AdapterServer {
 
     #[tool(
         name = "execute_daily_plan",
-        description = "展示与计划哈希绑定的 MCP 二次确认，并在接受后启动唯一的后台 MAA 日常任务。",
+        description = "逐字核对 expected_summary 与计划哈希后展示 MCP 二次确认，并在接受后启动唯一的后台 MAA 日常任务。",
         input_schema = schema_for_type::<ExecuteDailyPlanInput>(),
         annotations(
             title = "确认并执行日常计划",

@@ -25,6 +25,8 @@ pub enum ExecutionError {
     InvalidExpectedHash,
     #[error("expected plan hash does not match the ready plan")]
     PlanHashMismatch,
+    #[error("expected plan summary does not match the ready plan")]
+    SummaryMismatch,
     #[error("ready plan summary could not be generated")]
     InvalidPlan,
     #[error("plan changed after the confirmation snapshot")]
@@ -52,6 +54,7 @@ impl ExecutionError {
             Self::PlanNotReady => "PLAN_NOT_READY",
             Self::InvalidExpectedHash => "PLAN_HASH_INVALID",
             Self::PlanHashMismatch => "PLAN_HASH_MISMATCH",
+            Self::SummaryMismatch => "PLAN_SUMMARY_MISMATCH",
             Self::InvalidPlan => "PLAN_INVALID",
             Self::PlanChanged => "PLAN_CHANGED",
             Self::Environment(_) => "ENVIRONMENT_CHECK_FAILED",
@@ -89,6 +92,14 @@ impl PreparedExecution {
 
     pub fn summary(&self) -> &str {
         &self.summary
+    }
+
+    pub fn require_summary(&self, expected_summary: &str) -> Result<(), ExecutionError> {
+        if self.summary == expected_summary {
+            Ok(())
+        } else {
+            Err(ExecutionError::SummaryMismatch)
+        }
     }
 }
 
@@ -446,5 +457,30 @@ mod tests {
             .expect_err("changed summary must invalidate confirmation");
 
         assert!(matches!(error, ExecutionError::PlanChanged));
+    }
+
+    #[test]
+    fn prepared_execution_rejects_a_summary_that_differs_from_the_server_text() {
+        let temp = tempfile::tempdir().expect("temporary state");
+        let state = temp.path().join("state");
+        std::fs::create_dir(&state).expect("state directory");
+        let plans =
+            PlanService::new(FilePlanRepository::new(state.clone()).expect("plan repository"));
+        let PlanView { plan, .. } = plans
+            .create("default", vec![DailyTask::Infrast(InfrastPlan {})])
+            .expect("create plan");
+        let ready = plans.preview(&plan.plan_id).expect("preview plan");
+        let hash = hash_plan(&ready.plan).expect("plan hash");
+        let service = ExecutionService::new(state);
+        let prepared = service
+            .prepare(&ready.plan.plan_id, hash.as_str())
+            .expect("prepare execution");
+
+        assert!(prepared.require_summary(prepared.summary()).is_ok());
+        let error = prepared
+            .require_summary("被改写的摘要")
+            .expect_err("a mismatched summary must refuse execution");
+
+        assert!(matches!(error, ExecutionError::SummaryMismatch));
     }
 }
