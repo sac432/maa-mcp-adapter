@@ -22,9 +22,13 @@
 ## 发布前必须人工完成
 
 - [x] 在真实 `maa-cli v0.7.5` / MaaCore `v6.14.2` 上执行不启动游戏的 capability probe 和 dry-run。
-- [ ] 用户明确批准后，使用专用测试配置档完成一次真实安全日常。
+- [x] 用户明确批准后，使用专用测试配置档完成一次真实安全日常。
+      2026-07-26 通过：MuMu 12 真机模拟器，组合为启动/基建/信用/奖励/关闭
+      （无战斗、无公招），运行 17.6 分钟，exit 0，状态 succeeded。
 - [ ] 验证真实环境中的 CTRL_BREAK 优雅停止；失败时确认 Named Job 强制回退。
 - [x] Claude Code：加载十个 Tools，完成 fake MAA 全流程和 form elicitation。
+      注意：Claude Code 桌面应用（2.1.144）声明支持 elicitation 但自动拒绝，
+      表单不渲染；真实执行确认需使用 Claude Code 终端 CLI（已验证可用）。
 - [ ] Codex：已加载十个 Tools 并完成规划与预览；本机 CLI `0.111.0` 未声明 form elicitation 能力，尚未完成执行。
 - [ ] 两个客户端分别验证：关闭客户端后任务继续，重启后状态和日志可恢复。
 - [ ] 人工审阅 README、NOTICE、商标声明和发布说明。
