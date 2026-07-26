@@ -15,7 +15,9 @@ fn has_option(help: &str, expected: &str) -> bool {
         let token = token.trim_matches(|character: char| {
             matches!(character, ',' | ';' | ':' | '[' | ']' | '(' | ')')
         });
-        token == expected || token.starts_with(&format!("{expected}="))
+        token == expected
+            || token.starts_with(&format!("{expected}="))
+            || token.starts_with(&format!("{expected}[="))
     })
 }
 
@@ -34,5 +36,15 @@ mod tests {
         assert!(!capabilities.profile);
         assert!(!capabilities.dry_run);
         assert!(!capabilities.log_file);
+    }
+
+    #[test]
+    fn clap_optional_value_syntax_counts_as_the_exact_option() {
+        let capabilities = from_help(
+            "run --profile <PROFILE> --dry-run",
+            "maa --batch --log-file[=<PATH>]",
+        );
+
+        assert!(capabilities.log_file);
     }
 }
