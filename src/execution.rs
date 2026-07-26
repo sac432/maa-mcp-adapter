@@ -3,7 +3,9 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use thiserror::Error;
 
+use crate::config::EmulatorConfig;
 use crate::domain::{DailyPlan, PlanHash, PlanId, PlanState, RunId, RunRecord, RunStatus};
+use crate::emulator::EmulatorError;
 use crate::maa_cli::task_file::{TaskFileError, TaskFileStore};
 use crate::maa_cli::{MaaCliAdapter, MaaCliError};
 use crate::planning::hash::hash_plan;
@@ -41,6 +43,8 @@ pub enum ExecutionError {
     TaskFile(#[from] TaskFileError),
     #[error("system time is before Unix epoch")]
     InvalidSystemTime,
+    #[error("configured emulator could not be made ready")]
+    Emulator(#[from] EmulatorError),
     #[error("spawned process could not be safely terminated after persistence failure")]
     RollbackFailed(#[from] PlatformError),
 }
@@ -64,6 +68,7 @@ impl ExecutionError {
             Self::TaskFile(TaskFileError::Process(_)) => "MAA_PROCESS_FAILED",
             Self::TaskFile(_) => "TASK_FILE_ERROR",
             Self::InvalidSystemTime => "SYSTEM_TIME_INVALID",
+            Self::Emulator(_) => "EMULATOR_UNAVAILABLE",
             Self::RollbackFailed(_) => "PROCESS_ROLLBACK_FAILED",
         }
     }
@@ -105,6 +110,7 @@ impl PreparedExecution {
 
 pub struct ExecutionService {
     state_directory: PathBuf,
+    emulator: Option<EmulatorConfig>,
 }
 
 #[derive(Debug)]
@@ -115,7 +121,15 @@ pub struct LaunchedExecution {
 
 impl ExecutionService {
     pub fn new(state_directory: PathBuf) -> Self {
-        Self { state_directory }
+        Self {
+            state_directory,
+            emulator: None,
+        }
+    }
+
+    pub fn with_emulator(mut self, emulator: Option<EmulatorConfig>) -> Self {
+        self.emulator = emulator;
+        self
     }
 
     pub fn prepare(
@@ -165,6 +179,16 @@ impl ExecutionService {
                 self.rollback_confirmed(prepared, confirmed_revision);
                 return Err(error);
             }
+        };
+        let emulator = match &self.emulator {
+            Some(config) => match crate::emulator::ensure_running(config).await {
+                Ok(started) => started,
+                Err(error) => {
+                    self.rollback_confirmed(prepared, confirmed_revision);
+                    return Err(error.into());
+                }
+            },
+            None => None,
         };
 
         let run_directory = artifact
@@ -219,6 +243,11 @@ impl ExecutionService {
         if let Err(error) = run_repository.create(&record) {
             self.mark_running_failed(prepared);
             return self.rollback_spawned(active_lock, spawned, error.into());
+        }
+        if let (Some(started), Some(config)) = (emulator.as_ref(), self.emulator.as_ref())
+            && config.stop_after_run
+        {
+            let _ = crate::emulator::write_marker(run_directory, started);
         }
         if let Err(error) = active_lock.commit() {
             self.mark_running_failed(prepared);

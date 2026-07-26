@@ -187,6 +187,51 @@ async fn stop_run_forces_the_named_job_and_records_the_method() {
     );
 }
 
+#[tokio::test]
+async fn terminal_run_stops_only_the_recorded_adapter_started_emulator() {
+    let temp = tempfile::tempdir().expect("temporary state");
+    let state = temp.path().join("state");
+    fs::create_dir(&state).expect("state directory");
+    let fake = configured_background_fake(temp.path());
+    let launched = launch_ready_plan(&state, &fake).await;
+
+    let comspec = std::env::var_os("ComSpec").expect("cmd.exe available");
+    let mut emulator = std::process::Command::new(&comspec)
+        .args(["/C", "ping", "-n", "30", "127.0.0.1"])
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .spawn()
+        .expect("spawn stand-in emulator");
+    let identity = maa_mcp_adapter::platform::process_identity_for_child(&emulator)
+        .expect("stand-in emulator identity");
+    let run_directory = state.join("runs").join(launched.record.run_id.to_string());
+    maa_mcp_adapter::emulator::write_marker(
+        &run_directory,
+        &maa_mcp_adapter::emulator::StartedEmulator {
+            pid: emulator.id(),
+            creation_time_100ns: identity.creation_time_100ns,
+        },
+    )
+    .expect("write emulator marker");
+
+    let controls = RunControlService::new(state.clone(), Vec::new());
+    let stopped = controls
+        .stop(&launched.record.run_id, Duration::from_millis(50))
+        .expect("stop recorded run");
+
+    assert_eq!(stopped.status, RunStatus::Stopped);
+    assert!(
+        !run_directory.join("emulator.json").exists(),
+        "the emulator marker is consumed exactly once"
+    );
+    assert!(
+        !process_identity_matches(emulator.id(), identity).unwrap_or(false),
+        "the adapter-started emulator is terminated with the run"
+    );
+    let _ = emulator.wait();
+}
+
 #[test]
 fn stop_run_rejects_a_reused_pid_identity_without_terminating_it() {
     let temp = tempfile::tempdir().expect("temporary state");

@@ -14,6 +14,26 @@ pub struct AdapterConfig {
     pub redaction_patterns: Vec<String>,
     #[serde(default)]
     pub confirmation: ConfirmationMode,
+    pub maa_gui_config: Option<PathBuf>,
+    pub emulator: Option<EmulatorConfig>,
+}
+
+/// 可选的模拟器管理。适配器只启动、探测和(按标记)关闭这里显式配置的
+/// 可执行文件，不会猜测或搜索模拟器安装。
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct EmulatorConfig {
+    pub path: PathBuf,
+    #[serde(default)]
+    pub address: Option<String>,
+    #[serde(default = "default_emulator_wait_seconds")]
+    pub startup_wait_seconds: u16,
+    #[serde(default)]
+    pub stop_after_run: bool,
+}
+
+fn default_emulator_wait_seconds() -> u16 {
+    60
 }
 
 /// 执行前确认方式。默认要求 MCP form elicitation；`none` 仅适用于
@@ -131,5 +151,21 @@ mod tests {
 
         assert!(AdapterConfig::from_toml("confirmation = \"auto\"\n").is_err());
         assert!(AdapterConfig::from_toml("confirmation = true\n").is_err());
+    }
+
+    #[test]
+    fn emulator_section_parses_with_safe_defaults_and_rejects_unknown_fields() {
+        let config = AdapterConfig::from_toml(
+            "maa_gui_config = 'C:/MAA2/config/gui.json'\n\n[emulator]\npath = 'C:/emu/player.exe'\naddress = \"127.0.0.1:16384\"\n",
+        )
+        .expect("emulator config");
+        assert!(config.maa_gui_config.is_some());
+        let emulator = config.emulator.expect("emulator present");
+        assert_eq!(emulator.startup_wait_seconds, 60);
+        assert!(!emulator.stop_after_run);
+        assert_eq!(emulator.address.as_deref(), Some("127.0.0.1:16384"));
+
+        assert!(AdapterConfig::from_toml("[emulator]\npath = 'x'\nauto_kill = true\n").is_err());
+        assert!(AdapterConfig::from_toml("[emulator]\naddress = \"127.0.0.1:1\"\n").is_err());
     }
 }

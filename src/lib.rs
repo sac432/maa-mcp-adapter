@@ -1,5 +1,6 @@
 pub mod config;
 pub mod domain;
+pub mod emulator;
 pub mod error;
 pub mod execution;
 pub mod maa_cli;

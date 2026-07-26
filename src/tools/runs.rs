@@ -103,7 +103,12 @@ pub async fn execute_daily_plan(
         .state_directory()
         .map_err(ToolError::from_runtime)
         .map_err(rmcp::Json)?;
-    let execution = ExecutionService::new(state_directory.to_path_buf());
+    let config = runtime
+        .config()
+        .map_err(ToolError::from_runtime)
+        .map_err(rmcp::Json)?;
+    let execution =
+        ExecutionService::new(state_directory.to_path_buf()).with_emulator(config.emulator.clone());
     let prepared = execution
         .prepare(&plan_id, &input.expected_plan_hash)
         .map_err(ToolError::from_execution)
@@ -111,10 +116,6 @@ pub async fn execute_daily_plan(
     prepared
         .require_summary(&input.expected_summary)
         .map_err(ToolError::from_execution)
-        .map_err(rmcp::Json)?;
-    let config = runtime
-        .config()
-        .map_err(ToolError::from_runtime)
         .map_err(rmcp::Json)?;
 
     if config.confirmation == ConfirmationMode::Elicitation {
@@ -330,6 +331,10 @@ impl ToolError {
             "MAA_CAPABILITIES_UNAVAILABLE" | "ENVIRONMENT_CHECK_FAILED" => (
                 "maa-cli 环境不满足安全执行要求。",
                 "调用 check_environment 并修复所有执行能力诊断。",
+            ),
+            "EMULATOR_UNAVAILABLE" => (
+                "配置的模拟器无法启动或在限时内未就绪。",
+                "检查 config.toml 中 [emulator] 的 path 与 address，或手动启动模拟器后重试。",
             ),
             "PROCESS_ROLLBACK_FAILED" => (
                 "启动失败后无法验证并终止目标进程。",

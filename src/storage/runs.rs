@@ -102,6 +102,7 @@ impl FileRunRepository {
                 "stdout.log",
                 "stderr.log",
                 "stop.requested",
+                "emulator.json",
                 "record.json",
             ];
             let contents_are_known = fs::read_dir(&run_directory)

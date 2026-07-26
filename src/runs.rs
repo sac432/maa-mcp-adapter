@@ -299,6 +299,7 @@ fn finalize_run(
         return Err(error.into());
     }
     update_plan_terminal(state_directory, &record);
+    crate::emulator::stop_marked_emulator(&state_directory.join("runs").join(run_id.to_string()));
     let _ = release_active_run_lock(state_directory, run_id);
     Ok(record)
 }

@@ -21,7 +21,19 @@ pub struct CheckEnvironmentOutput {
     pub profiles: Vec<String>,
     pub can_plan: bool,
     pub can_execute: bool,
+    pub gui_discovery: Option<GuiDiscoveryOutput>,
     pub diagnostics: Vec<Diagnostic>,
+}
+
+/// 从用户配置的 MAA 图形版 `gui.json` 只读发现的连接与模拟器信息，
+/// 仅作为填写 maa-cli 配置档和适配器 `[emulator]` 的参考。
+#[derive(Debug, Default, PartialEq, Eq, Serialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct GuiDiscoveryOutput {
+    pub adb_path: Option<String>,
+    pub address: Option<String>,
+    pub emulator_path: Option<String>,
+    pub emulator_install: Option<String>,
 }
 
 #[derive(Debug, Default, Serialize, JsonSchema)]
@@ -67,9 +79,27 @@ pub async fn check_environment(runtime: &SharedRuntime) -> ToolResult<CheckEnvir
             profiles: Vec::new(),
             can_plan,
             can_execute: false,
+            gui_discovery: None,
             diagnostics,
         }));
     };
+    let gui_discovery =
+        config
+            .maa_gui_config
+            .as_deref()
+            .and_then(|path| match discover_gui_settings(path) {
+                Ok(discovery) => Some(discovery),
+                Err(message) => {
+                    diagnostics.push(Diagnostic {
+                        code: "GUI_CONFIG_UNREADABLE".to_owned(),
+                        message,
+                        recovery: vec![
+                            "确认 maa_gui_config 指向 MAA 图形版的 gui.json 后重试。".to_owned(),
+                        ],
+                    });
+                    None
+                }
+            });
     let resolved = match config.resolve_maa_executable(path_search_value().as_deref()) {
         Ok(resolved) => resolved,
         Err(error) => {
@@ -83,6 +113,7 @@ pub async fn check_environment(runtime: &SharedRuntime) -> ToolResult<CheckEnvir
                 profiles: Vec::new(),
                 can_plan,
                 can_execute: false,
+                gui_discovery,
                 diagnostics,
             }));
         }
@@ -119,6 +150,7 @@ pub async fn check_environment(runtime: &SharedRuntime) -> ToolResult<CheckEnvir
                 profiles: environment.profiles,
                 can_plan,
                 can_execute,
+                gui_discovery,
                 diagnostics,
             }))
         }
@@ -139,10 +171,34 @@ pub async fn check_environment(runtime: &SharedRuntime) -> ToolResult<CheckEnvir
                 profiles: Vec::new(),
                 can_plan,
                 can_execute: false,
+                gui_discovery,
                 diagnostics,
             }))
         }
     }
+}
+
+fn discover_gui_settings(path: &std::path::Path) -> Result<GuiDiscoveryOutput, String> {
+    let contents = std::fs::read_to_string(path)
+        .map_err(|_| format!("无法读取 MAA 图形版配置：{}", path.display()))?;
+    let value: serde_json::Value = serde_json::from_str(&contents)
+        .map_err(|_| format!("MAA 图形版配置不是有效 JSON：{}", path.display()))?;
+    let text = |key: &str| {
+        value
+            .get(key)
+            .and_then(serde_json::Value::as_str)
+            .map(str::trim)
+            .filter(|text| !text.is_empty())
+            .map(str::to_owned)
+    };
+    Ok(GuiDiscoveryOutput {
+        adb_path: text("Connect.AdbPath"),
+        address: text("Connect.Address"),
+        emulator_path: text("Start.EmulatorPath"),
+        emulator_install: ["Connect.MuMu12EmulatorPath", "Connect.LdPlayerEmulatorPath"]
+            .iter()
+            .find_map(|key| text(key)),
+    })
 }
 
 fn config_diagnostic(error: &ConfigError) -> Diagnostic {
@@ -293,5 +349,40 @@ fn choice(value: &str, label: &str) -> ChoiceOption {
     ChoiceOption {
         value: value.to_owned(),
         label: label.to_owned(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::discover_gui_settings;
+
+    #[test]
+    fn gui_discovery_reads_only_known_string_keys() {
+        let temp = tempfile::tempdir().expect("temporary directory");
+        let path = temp.path().join("gui.json");
+        std::fs::write(
+            &path,
+            r#"{
+                "Connect.AdbPath": "D:\\MuMu\\adb.exe",
+                "Connect.Address": "127.0.0.1:16384",
+                "Connect.MuMu12EmulatorPath": "C:\\Program Files\\Netease\\MuMuPlayer-12.0",
+                "Start.EmulatorPath": "",
+                "Connect.Secret": "must-not-appear"
+            }"#,
+        )
+        .expect("write gui json");
+
+        let discovery = discover_gui_settings(&path).expect("parse gui json");
+
+        assert_eq!(discovery.adb_path.as_deref(), Some("D:\\MuMu\\adb.exe"));
+        assert_eq!(discovery.address.as_deref(), Some("127.0.0.1:16384"));
+        assert_eq!(discovery.emulator_path, None);
+        assert_eq!(
+            discovery.emulator_install.as_deref(),
+            Some("C:\\Program Files\\Netease\\MuMuPlayer-12.0")
+        );
+
+        std::fs::write(&path, "not json").expect("write invalid contents");
+        assert!(discover_gui_settings(&path).is_err());
     }
 }
