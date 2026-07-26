@@ -881,7 +881,8 @@ git commit -m "docs: prepare maa-mcp-adapter MVP release"
 - 发布候选：`maa-mcp-adapter-v0.1.0-windows-x86_64.zip` 只含适配器 EXE、EXE 校验和、LICENSE、NOTICE、README 和四份文档。EXE SHA-256：`7ce65e3f30bd63e001a5ad85d0a07cc379e490c1e0417293dc58b3d003267e6b`；ZIP SHA-256：`471b572484981008433c0a10741a718c35055079ed6c879f3c4c7945ac6da9b4`。
 - 修复后复验（2026-07-26）：修正 Award 确认摘要与生成任务不一致（摘要现在如实描述 MAA 对日常/周常任务奖励的合并领取），以及脱敏替换使日志尾部超过 64 KiB 时 `truncated` 标志漏报；两项均附回归测试。`cargo fmt --check`、严格 clippy、80 项测试与 `cargo build --release --locked` 重新通过；release EXE 重新完成独立 STDIO 初始化、恰好十个 Tools、跨服务器重启的计划持久化与新摘要验证。按发布清单重建发布候选（EXE、校验和、LICENSE、NOTICE、README 与三份 docs）。EXE SHA-256：`d053e9df76b392d67a556dc0b981b0b45afbd963a0bfa08fd91b9b76f685da14`；ZIP SHA-256：`5dfc09fd3ed8edc35c2862fbbc52b814537077167147ed9bd8c8bc01fde6b5a7`。
 - 环境回归（2026-07-26）：真实 `check_environment` 返回 `can_execute = false`——`maa run --dry-run` 期间 maa-cli 需访问 `api.maa.plus`，本机当前对该域名的 TLS 握手被中断（对照 `api.github.com` 正常），绝对任务路径探测因此失败；适配器按安全失败拒绝执行，行为符合设计。恢复对 `*.maa.plus` 的连通后需重新执行 capability probe。
-- 当前阻塞：真实游戏日常仍需具体任务汇总和用户最终确认，且本机需先恢复对 `api.maa.plus` 的网络连通（当前 `can_execute = false`）；Codex 需换用声明 form elicitation 能力的客户端版本；两个客户端的关闭/重启恢复尚未人工执行。因此阶段 8 尚不能宣告最终通过，且仍未推送、打 Tag 或创建 GitHub Release。
+- 环境回归解决（2026-07-26）：定位为 `maa-cli` 运行时对 `api.maa.plus` 的热更新请求在当前网络被干扰（TLS 握手中断），且该失败在 `maa run` 中致命。依据 maa-cli 源码 `hot_update.api_url` 配置项，在用户 `cli.toml` 中把热更新 API 指向官方 GitHub MaaRelease 镜像后，手动 dry-run 探测退出码 0，`check_environment` 返回 `can_execute = true`、全部能力为真、诊断为空。解决方案已写入 `docs/configuration.md` 故障排查一节。
+- 当前阻塞：真实游戏日常仍需具体任务汇总和用户最终确认；Codex 需换用声明 form elicitation 能力的客户端版本；两个客户端的关闭/重启恢复尚未人工执行。因此阶段 8 尚不能宣告最终通过，且仍未推送、打 Tag 或创建 GitHub Release。
 
 ---
 

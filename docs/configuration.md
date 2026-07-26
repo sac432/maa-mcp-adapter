@@ -84,3 +84,30 @@ locks\active-run.lock
 4. 只有所有能力探测通过且 `can_execute = true` 时才执行计划。
 
 配置解析拒绝未知字段。错误不会自动退回不安全默认值。
+
+## 故障排查：`api.maa.plus` 不可达
+
+症状：`check_environment` 报 `absolute_task_path = false` 且诊断为
+"absolute task path dry-run failed"；手动运行 `maa run` 立即报
+`Error: Network error`。
+
+原因：`maa-cli` 每次 `run`（含 `--dry-run`）都会先从
+`https://api.maa.plus` 热更新关卡活动数据，失败即中止。部分网络环境对该
+域名存在干扰。
+
+解决：使用 `maa-cli` 自身的配置项，把热更新 API 指向官方 GitHub 镜像。在
+`maa dir config` 所示目录中创建或编辑 `cli.toml`：
+
+```toml
+[hot_update]
+api_url = "https://raw.githubusercontent.com/MaaAssistantArknights/MaaRelease/main/MaaAssistantArknights/api"
+```
+
+验证顺序：
+
+1. `curl` 该镜像下的 `gui/StageActivityV2.json` 返回 200；
+2. `maa --batch run <任务文件> --dry-run --profile <配置档>` 退出码 0；
+3. `check_environment` 返回 `can_execute = true`。
+
+这是 `maa-cli` 的公开配置，不涉及本适配器；适配器自身从不修改
+`maa-cli` 的配置档。
