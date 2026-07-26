@@ -100,10 +100,24 @@ locks\active-run.lock
 
 ### `maa_gui_config`
 
-可选。指向 MAA 图形版的 `gui.json` 绝对路径。配置后 `check_environment`
-会**只读**解析并在 `gui_discovery` 字段回报其中的 adb 路径、连接地址和
-模拟器路径，作为填写 maa-cli 配置档与 `[emulator]` 的参考。适配器不会
-修改该文件。
+可选。指向 MAA 图形版的 `gui.json` 绝对路径。适配器对它**只读**，并提供
+两个用途：
+
+1. `check_environment` 在 `gui_discovery` 字段回报其中的 adb 路径、连接
+   地址和模拟器路径，作为填写 maa-cli 配置档与 `[emulator]` 的参考；
+2. `create_daily_plan` 在调用方**不提供任何任务**时，从同目录
+   `gui.new.json` 的 `TaskQueue`（MAA"一键长草"保存的任务队列）确定性地
+   派生默认计划——"跑默认日常"由此等于"跑 MAA 里保存的日常"，而不是
+   任何 LLM 的即兴发挥。
+
+派生规则（只映射启用的白名单任务，数值向安全方向钳制）：
+
+- 开始唤醒 → `start_up`；自动公招 → `recruit`（次数上限截断到 4，
+  确认招募取自星级勾选，**加急许可恒为否**）；基建 → `infrast`；
+  信用收支 → `mall`（访友/购物開關照搬）；领取奖励 → `award`。
+- **不派生刷理智**：MAA 的刷理智是"刷到资源耗尽"模型，与本项目
+  "有限显式次数"的安全模型不兼容，刷图必须由用户显式给出关卡与次数。
+- 肉鸽、生息演算等白名单外任务一律忽略。
 
 ### `[emulator]`
 

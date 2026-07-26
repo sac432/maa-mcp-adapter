@@ -4,6 +4,7 @@ use crate::domain::PlanState;
 
 pub mod hash;
 pub mod lifecycle;
+pub mod maa_defaults;
 pub mod normalize;
 pub mod policy;
 pub mod service;

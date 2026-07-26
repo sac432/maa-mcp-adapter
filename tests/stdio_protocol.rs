@@ -506,6 +506,68 @@ fn run_tools_return_strict_status_bounded_log_and_safe_stop_error() {
 }
 
 #[test]
+fn create_daily_plan_derives_defaults_from_saved_maa_settings() {
+    let data = tempfile::tempdir().expect("temporary app data");
+    let gui_dir = data.path().join("maa-gui");
+    std::fs::create_dir(&gui_dir).expect("gui directory");
+    std::fs::write(
+        gui_dir.join("gui.new.json"),
+        r#"{
+            "Configurations": {
+                "Default": {
+                    "TaskQueue": [
+                        {"TaskType": "StartUp", "IsEnable": true},
+                        {"TaskType": "Recruit", "IsEnable": true, "MaxTimes": 100,
+                         "Level3Choose": true, "Level4Choose": true, "Level5Choose": true},
+                        {"TaskType": "Infrast", "IsEnable": true},
+                        {"TaskType": "Fight", "IsEnable": true, "TimesLimit": 5},
+                        {"TaskType": "Mall", "IsEnable": true, "Shopping": true, "VisitFriends": true},
+                        {"TaskType": "Award", "IsEnable": true, "Award": true, "Mail": false},
+                        {"TaskType": "Roguelike", "IsEnable": true}
+                    ]
+                }
+            },
+            "Current": "Default"
+        }"#,
+    )
+    .expect("write task queue fixture");
+    let gui_path = gui_dir.join("gui.json");
+    std::fs::write(&gui_path, "{}").expect("write gui placeholder");
+    let config = format!("maa_gui_config = '{}'\n", gui_path.display());
+    let mut client = McpClient::spawn_into(data, Some(&config));
+    client.initialize();
+
+    let created = client.call(10, "create_daily_plan", json!({"profile": "default"}));
+    let output = &created["result"]["structuredContent"];
+    let kinds: Vec<&str> = output["tasks"]
+        .as_array()
+        .expect("derived tasks")
+        .iter()
+        .map(|task| task["type"].as_str().expect("task type"))
+        .collect();
+
+    assert_eq!(
+        kinds,
+        ["start_up", "recruit", "infrast", "mall", "award"],
+        "enabled whitelisted tasks map in order; fight and roguelike are excluded"
+    );
+    let recruit = &output["tasks"][1]["params"];
+    assert_eq!(recruit["max_recruits"], 4, "MaxTimes 100 clamps to 4");
+    assert_eq!(recruit["confirm_recruitment"], true);
+    assert_eq!(
+        recruit["use_expedited_plans"], false,
+        "expedited plans never derive to true"
+    );
+    assert_eq!(output["state"], "draft");
+    assert!(
+        output["validation_errors"]
+            .as_array()
+            .is_some_and(Vec::is_empty)
+    );
+    client.finish();
+}
+
+#[test]
 fn collect_diagnostics_produces_a_redacted_pasteable_report() {
     let mut client =
         McpClient::spawn_with_config(Some("redaction_patterns = [\"secret-value\"]\n"));
@@ -608,6 +670,10 @@ impl McpClient {
 
     fn spawn_with_config(config: Option<&str>) -> Self {
         let data = tempfile::tempdir().expect("temporary app data");
+        Self::spawn_into(data, config)
+    }
+
+    fn spawn_into(data: TempDir, config: Option<&str>) -> Self {
         let empty_path = data.path().join("empty-path");
         std::fs::create_dir(&empty_path).expect("empty PATH directory");
         if let Some(config) = config {

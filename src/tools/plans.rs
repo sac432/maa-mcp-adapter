@@ -46,9 +46,19 @@ pub fn create_daily_plan(
         .intent
         .as_ref()
         .is_some_and(|intent| !intent.trim().is_empty());
+    let tasks = if input.tasks.is_empty() {
+        runtime
+            .config()
+            .ok()
+            .and_then(|config| config.maa_gui_config.as_deref())
+            .and_then(crate::planning::maa_defaults::derive_default_tasks)
+            .unwrap_or_default()
+    } else {
+        input.tasks
+    };
     let service = plan_service(runtime).map_err(rmcp::Json)?;
     let view = service
-        .create(input.profile.unwrap_or_default(), input.tasks)
+        .create(input.profile.unwrap_or_default(), tasks)
         .map_err(|error| rmcp::Json(ToolError::from_service(error)))?;
     Ok(rmcp::Json(PlanViewOutput::from_view(view)))
 }
