@@ -68,12 +68,11 @@ winget install maa-cli
 ```
 
 ```powershell
-# 管理员运行；官方要求在 maa install 前安装 VC++ 运行库
+# 官方要求在 maa install 前安装 VC++ 运行库 如果已经安装则可以跳过
 winget install "Microsoft.VCRedist.2015+.x64" --override "/repair /passive /norestart" --uninstall-previous --accept-package-agreements --force
 ```
 
 ```powershell
-# 关键第二步：下载 MaaCore 引擎与游戏资源，缺了它什么都跑不了
 maa install
 ```
 
