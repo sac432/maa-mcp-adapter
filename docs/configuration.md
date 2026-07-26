@@ -26,7 +26,9 @@ maa_gui_config = 'C:\MAA\config\gui.json'
 path = 'D:\Program Files\Netease\MuMu Player 12\nx_main\MuMuManager.exe'
 args = ["control", "-v", "0", "launch"]
 address = "127.0.0.1:16384"
+adb_path = 'D:\Program Files\Netease\MuMu Player 12\shell\adb.exe'
 startup_wait_seconds = 120
+boot_settle_seconds = 15
 stop_after_run = false
 stop_args = ["control", "-v", "0", "shutdown"]
 ```
@@ -114,7 +116,12 @@ locks\active-run.lock
   界面；使用官方 CLI 才能自动开机。MuMu 12 示例：`MuMuManager.exe`
   加 `["control", "-v", "0", "launch"]` 直接开机 0 号设备。
 - `address`：ADB 连接地址，如 `"127.0.0.1:16384"`，用于在线探测。
-- `startup_wait_seconds`：启动等待上限，默认 `60`。
+- `adb_path`：可选但强烈建议配置。模拟器端口通常在安卓系统启动完成前
+  就已监听，仅测端口会让 MAA 抢跑（连接失败或触控初始化失败）。配置
+  后会用 `adb shell getprop sys.boot_completed` 轮询真实启动完成。
+- `startup_wait_seconds`：就绪等待总时限，默认 `60`（冷启动建议 `120`）。
+- `boot_settle_seconds`：判定就绪后的额外静置秒数，默认 `10`，给系统
+  服务和触控组件留初始化缓冲；已就绪的快路径不静置。
 - `stop_after_run`：默认 `false`。为 `true` 时，运行进入终态后关闭
   由适配器本次启动的模拟器。
 - `stop_args`：可选。配置后，关闭动作改为以 `path` + `stop_args` 执行

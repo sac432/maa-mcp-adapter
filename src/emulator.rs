@@ -1,3 +1,4 @@
+use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
 use std::time::Duration;
@@ -10,6 +11,7 @@ use crate::domain::ProcessStartIdentity;
 use crate::platform::{PlatformError, process_identity_for_child, terminate_if_matches};
 
 const PROBE_TIMEOUT: Duration = Duration::from_secs(1);
+const ADB_PROBE_TIMEOUT: Duration = Duration::from_secs(5);
 const POLL_INTERVAL: Duration = Duration::from_secs(1);
 
 #[derive(Debug, Error)]
@@ -52,17 +54,50 @@ pub enum EmulatorStop {
     Command { path: PathBuf, args: Vec<String> },
 }
 
-/// 确保模拟器在线。已在线（地址可连通）时不做任何事并返回 `None`；
-/// 否则启动配置的可执行文件并等待地址可连通（未配置地址时只做定长等待）。
+/// 确保模拟器在线并真正可用。快路径：地址可连通且（配置了 `adb_path`
+/// 时）安卓已启动完成，直接返回 `None`。否则在端口不可达时启动配置的
+/// 可执行文件，并在总时限内等待端口可达、安卓启动完成，最后按
+/// `boot_settle_seconds` 静置。返回 `Some` 仅表示本次由适配器启动。
 pub async fn ensure_running(
     config: &EmulatorConfig,
 ) -> Result<Option<StartedEmulator>, EmulatorError> {
     if let Some(address) = config.address.as_deref()
         && address_is_open(address).await
+        && boot_completed(config, address).await
     {
         return Ok(None);
     }
 
+    let started = match config.address.as_deref() {
+        Some(address) if address_is_open(address).await => None,
+        _ => Some(spawn_emulator(config)?),
+    };
+
+    let wait = Duration::from_secs(u64::from(config.startup_wait_seconds));
+    match config.address.as_deref() {
+        Some(address) => {
+            let deadline = tokio::time::Instant::now() + wait;
+            loop {
+                if address_is_open(address).await && boot_completed(config, address).await {
+                    break;
+                }
+                if tokio::time::Instant::now() >= deadline {
+                    return Err(EmulatorError::NotReady {
+                        address: address.to_owned(),
+                        waited: wait,
+                    });
+                }
+                tokio::time::sleep(POLL_INTERVAL).await;
+            }
+        }
+        None => tokio::time::sleep(wait).await,
+    }
+    tokio::time::sleep(Duration::from_secs(u64::from(config.boot_settle_seconds))).await;
+
+    Ok(started)
+}
+
+fn spawn_emulator(config: &EmulatorConfig) -> Result<StartedEmulator, EmulatorError> {
     let mut command = std::process::Command::new(&config.path);
     command
         .args(&config.args)
@@ -85,28 +120,28 @@ pub async fn ensure_running(
         creation_time_100ns: identity.creation_time_100ns,
     };
     drop(child);
+    Ok(started)
+}
 
-    let wait = Duration::from_secs(u64::from(config.startup_wait_seconds));
-    match config.address.as_deref() {
-        Some(address) => {
-            let deadline = tokio::time::Instant::now() + wait;
-            loop {
-                if address_is_open(address).await {
-                    break;
-                }
-                if tokio::time::Instant::now() >= deadline {
-                    return Err(EmulatorError::NotReady {
-                        address: address.to_owned(),
-                        waited: wait,
-                    });
-                }
-                tokio::time::sleep(POLL_INTERVAL).await;
-            }
-        }
-        None => tokio::time::sleep(wait).await,
+/// 未配置 `adb_path` 时退化为恒真（只依赖端口探测）。配置后通过
+/// `adb shell getprop sys.boot_completed` 判定安卓真正启动完成。
+async fn boot_completed(config: &EmulatorConfig, address: &str) -> bool {
+    let Some(adb) = config.adb_path.as_deref() else {
+        return true;
+    };
+    let connect_args = [OsString::from("connect"), OsString::from(address)];
+    let _ = crate::maa_cli::process::run(adb, &connect_args, ADB_PROBE_TIMEOUT).await;
+    let getprop_args = [
+        OsString::from("-s"),
+        OsString::from(address),
+        OsString::from("shell"),
+        OsString::from("getprop"),
+        OsString::from("sys.boot_completed"),
+    ];
+    match crate::maa_cli::process::run(adb, &getprop_args, ADB_PROBE_TIMEOUT).await {
+        Ok(output) => output.stdout.trim() == "1",
+        Err(_) => false,
     }
-
-    Ok(Some(started))
 }
 
 async fn address_is_open(address: &str) -> bool {
@@ -174,7 +209,9 @@ mod tests {
             path: std::path::PathBuf::from("Z:/definitely/not/a/real/emulator.exe"),
             args: Vec::new(),
             address: Some(address),
+            adb_path: None,
             startup_wait_seconds: 1,
+            boot_settle_seconds: 0,
             stop_after_run: true,
             stop_args: None,
         };
@@ -190,7 +227,9 @@ mod tests {
             path: std::path::PathBuf::from("Z:/definitely/not/a/real/emulator.exe"),
             args: Vec::new(),
             address: Some("127.0.0.1:9".to_owned()),
+            adb_path: None,
             startup_wait_seconds: 1,
+            boot_settle_seconds: 0,
             stop_after_run: false,
             stop_args: None,
         };
@@ -236,7 +275,9 @@ mod tests {
             path: std::path::PathBuf::from(helper),
             args: Vec::new(),
             address: Some("127.0.0.1:9".to_owned()),
+            adb_path: None,
             startup_wait_seconds: 1,
+            boot_settle_seconds: 0,
             stop_after_run: false,
             stop_args: None,
         };

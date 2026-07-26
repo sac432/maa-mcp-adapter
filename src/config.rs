@@ -28,8 +28,17 @@ pub struct EmulatorConfig {
     pub args: Vec<String>,
     #[serde(default)]
     pub address: Option<String>,
+    /// 配置后，除端口可连通外还会用
+    /// `adb -s <address> shell getprop sys.boot_completed` 轮询安卓真正
+    /// 启动完成。模拟器端口通常在系统启动前就已监听，仅测端口会抢跑。
+    #[serde(default)]
+    pub adb_path: Option<PathBuf>,
     #[serde(default = "default_emulator_wait_seconds")]
     pub startup_wait_seconds: u16,
+    /// 判定就绪后的额外静置秒数，默认 `10`，给系统服务和触控组件留
+    /// 初始化缓冲。已就绪的快路径（无需启动或等待）不静置。
+    #[serde(default = "default_boot_settle_seconds")]
+    pub boot_settle_seconds: u16,
     #[serde(default)]
     pub stop_after_run: bool,
     /// 配置后，`stop_after_run` 以 `path` + `stop_args` 执行一次关机命令
@@ -40,6 +49,10 @@ pub struct EmulatorConfig {
 
 fn default_emulator_wait_seconds() -> u16 {
     60
+}
+
+fn default_boot_settle_seconds() -> u16 {
+    10
 }
 
 /// 执行前确认方式。默认要求 MCP form elicitation；`none` 仅适用于
@@ -168,6 +181,8 @@ mod tests {
         assert!(config.maa_gui_config.is_some());
         let emulator = config.emulator.expect("emulator present");
         assert_eq!(emulator.startup_wait_seconds, 60);
+        assert_eq!(emulator.boot_settle_seconds, 10);
+        assert!(emulator.adb_path.is_none());
         assert!(!emulator.stop_after_run);
         assert_eq!(emulator.address.as_deref(), Some("127.0.0.1:16384"));
         assert_eq!(emulator.args, ["control", "-v", "0", "launch"]);
