@@ -60,6 +60,29 @@ Agent 不能从一句模糊请求直接启动 MAA。标准流程：
 | MAA 图形版（推荐） | 已保存过连接与日常任务配置——一键初始化和默认计划都从这里读取 |
 | 支持 MCP 的 Agent 客户端 | 执行确认需要客户端支持 MCP form elicitation（详见下文已知限制） |
 
+<details>
+<summary>maa-cli 快速安装（三条命令）</summary>
+
+```powershell
+winget install maa-cli
+```
+
+```powershell
+# 管理员运行；官方要求在 maa install 前安装 VC++ 运行库
+winget install "Microsoft.VCRedist.2015+.x64" --override "/repair /passive /norestart" --uninstall-previous --accept-package-agreements --force
+```
+
+```powershell
+# 关键第二步：下载 MaaCore 引擎与游戏资源，缺了它什么都跑不了
+maa install
+```
+
+maa-cli 本体放哪都可以：要么在 `PATH` 中，要么在本适配器
+`config.toml` 里用 `maa_executable` 填绝对路径。其他安装方式见
+[maa-cli 官方安装文档](https://github.com/MaaAssistantArknights/maa-cli/blob/main/crates/maa-cli/docs/zh-CN/install.md)。
+
+</details>
+
 ## 🚀 安装
 
 **方式一：下载发布包**（推荐）
