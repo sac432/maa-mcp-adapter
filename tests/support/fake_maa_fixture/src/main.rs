@@ -77,7 +77,7 @@ fn main() {
             }
             println!("dry-run ok");
         }
-        ["--batch", "run", _, "--profile", _] if mode == "block-record" => {
+        ["--batch", "run", _, "--profile", _, "-v"] if mode == "block-record" => {
             fs::write(
                 executable.with_extension("pid"),
                 std::process::id().to_string(),
@@ -87,12 +87,13 @@ fn main() {
             std::io::stdout().flush().expect("flush startup output");
             std::thread::sleep(Duration::from_secs(60));
         }
-        ["--batch", "run", _, "--profile", _] if mode == "background" => {
+        ["--batch", "run", _, "--profile", _, "-v"] if mode == "background" => {
             println!("background run started");
+            eprintln!("[fake] INFO connected and running daily tasks");
             std::io::stdout().flush().expect("flush startup output");
             std::thread::sleep(Duration::from_secs(60));
         }
-        ["--batch", "run", _, "--profile", _] if mode == "actual-fail" => {
+        ["--batch", "run", _, "--profile", _, "-v"] if mode == "actual-fail" => {
             eprintln!("simulated actual execution failure");
             std::process::exit(29);
         }

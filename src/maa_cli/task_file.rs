@@ -381,6 +381,7 @@ impl MaaCliAdapter {
             artifact.path.as_os_str().to_owned(),
             OsString::from("--profile"),
             OsString::from(&artifact.profile),
+            OsString::from("-v"),
         ];
         Ok(process::spawn_background(
             run_id,

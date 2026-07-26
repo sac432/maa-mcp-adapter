@@ -246,6 +246,7 @@ async fn restart_recovery_monitors_a_matching_detached_process() {
             run_directory.join("task.toml").into_os_string(),
             "--profile".into(),
             "default".into(),
+            "-v".into(),
         ],
         &run_directory.join("stdout.log"),
         &run_directory.join("stderr.log"),
