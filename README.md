@@ -9,11 +9,11 @@ Unofficial MCP adapter for MAA.
 
 ## 当前状态
 
-项目处于 `0.1.0` MVP 发布准备阶段。fake CLI 自动化测试已覆盖完整协议和失败路径，但发布前仍需：
+项目处于 `0.1.0` MVP 发布准备阶段。fake CLI 自动化测试已覆盖完整协议和失败路径，真实 `maa-cli v0.7.5` / MaaCore `v6.14.2` 的 capability probe 与不启动游戏的 dry-run 已通过，Claude Code 实际 UI 的完整 fake MAA 流程和 form elicitation 也已通过。发布前仍需：
 
-- 使用真实 `maa-cli` 完成不启动游戏的 dry-run 兼容性验收；
 - 由用户明确同意后，在专用测试配置档上执行一次真实安全日常；
-- 分别在 Claude Code 与 Codex 的实际 UI 中完成 elicitation 和重启恢复验收。
+- 使用支持 MCP form elicitation 的 Codex 客户端完成最终确认与 fake MAA 执行验收；
+- 分别验证 Claude Code 与 Codex 关闭、重启后的运行恢复。
 
 在完成这些人工验收前，请勿把本项目用于无人值守的真实账号。
 

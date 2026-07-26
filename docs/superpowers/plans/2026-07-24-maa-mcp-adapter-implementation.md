@@ -835,9 +835,16 @@ check_environment
 
   使用专门的测试配置档，先完成不启动游戏的 dry-run，再由用户明确确认是否执行真实游戏日常。不得在自动测试中操作真实账号。
 
+  - [x] `maa-cli v0.7.5` / MaaCore `v6.14.2` capability probe 与不启动游戏的 dry-run。
+  - [ ] 真实游戏日常：等待具体任务汇总及用户最终确认。
+
 - [ ] **任务 8.7：分别验收 Claude Code 和 Codex**
 
   两个客户端都必须验证：一句话请求、逐项追问、完整摘要、MCP 二次确认、状态查询、日志读取、停止和重启恢复。
+
+  - [x] Claude Code：十个 Tool、完整摘要、form elicitation、fake 执行、状态、脱敏日志和停止。
+  - [ ] Codex：十个 Tool、规划和完整摘要已通过；本机 CLI `0.111.0` 未声明 form elicitation 能力，服务器按设计拒绝执行。
+  - [ ] 两个客户端关闭及重启后的运行恢复。
 
 - [x] **任务 8.8：构建发布候选**
 
@@ -852,7 +859,7 @@ git commit -m "docs: prepare maa-mcp-adapter MVP release"
 
 ### 阶段验收标准
 
-- [ ] Claude Code 和 Codex 均能列出全部十个 Tool。
+- [x] Claude Code 和 Codex 均能列出全部十个 Tool。
 - [ ] 两个客户端均完成一次 fake maa 全流程。
 - [ ] 用户明确批准后，真实 `maa-cli` 完成一次安全日常流程。
 - [x] 不完整计划、修改后旧确认、碎石、自定义任务及并发执行请求均被拒绝。
@@ -867,10 +874,12 @@ git commit -m "docs: prepare maa-mcp-adapter MVP release"
 - 发布准备提交：`4ba04b9 docs: prepare maa-mcp-adapter MVP release`
 - 官方资料核对：使用当前 Codex 官方手册确认 `[mcp_servers.<name>]`、CLI add/remove 和 `mcp_elicitations`；使用 Claude Code 官方 MCP 文档确认 Windows STDIO、scope、add/remove 与 form elicitation。并用本机两个 CLI 的 `--help` 只读核对示例参数。
 - 自动端到端：新增单个真实 STDIO 会话，完成环境、选项、创建、更新、预览、elicitation 接受、状态、脱敏日志和停止；该测试发现并修复 `\\?\` Windows 规范路径与普通绝对路径比较导致合法日志被拒绝的问题，路径逃逸测试继续通过。
-- 自动验证：根 crate 与 fake 夹具格式检查、严格 clippy、77 项测试、`cargo build --release --locked` 全部通过；release EXE 独立初始化成功并恰好列出十个 Tools。
-- 发布候选：`maa-mcp-adapter-v0.1.0-windows-x86_64.zip` 只含适配器 EXE、EXE 校验和、LICENSE、NOTICE、README 和四份文档。EXE SHA-256：`8c5019623ac5d2004f84bad2d1cd0147d4f0d9377412e6680a1d8668fb0d850c`；ZIP SHA-256：`e385795d4aaddb83d7968d1fbd9dac383b9a5529f7bb02c75f171b30c4fae592`。
-- 人工阻塞：本机存在 Codex 和 Claude Code CLI，但未修改用户客户端配置或消耗用户账户执行模型会话；本机未发现真实 `maa.exe`/`maa-cli.exe`。因此任务 8.6、8.7 及三条对应验收标准保持未完成。
-- 当前结论：代码和自动化发布候选已完成，阶段 8 尚不能宣告最终通过。需要用户提供真实 MAA 环境并明确授权两个客户端的实际配置/会话验收；仍未推送、打 Tag 或创建 GitHub Release。
+- 自动验证：根 crate 与 fake 夹具格式检查、严格 clippy、78 项测试、`cargo build --release --locked` 全部通过；release EXE 独立初始化成功并恰好列出十个 Tools。
+- 真实 MAA：安装官方稳定版 `maa-cli v0.7.5` 与 MaaCore `v6.14.2`，使用专用 `mcp-acceptance` 配置档完成 capability probe 和不启动游戏的 dry-run。真实帮助文本使用 `--log-file[=<PATH>]`，验收由此发现 capability parser 漏判；新增回归测试并兼容 Clap 可选值语法后，`batch`、`profile`、`dry_run`、`log_file` 和绝对任务路径能力均为 `true`。
+- 客户端验收：Claude Code 发现十个 Tool，并完成计划、中文摘要、原生 form elicitation、fake 后台执行、状态、脱敏日志和停止。Codex CLI `0.111.0` 发现十个 Tool并完成计划与摘要，但未声明 MCP form elicitation 能力；`execute_daily_plan` 返回 `CLIENT_ELICITATION_UNSUPPORTED`，未创建运行，证明服务器没有绕过最终确认。
+- 客户端配置：正式 `maa` STDIO Server 已加入 Claude Code 用户配置和 Codex 配置；临时 `maa_fake` 配置与验收目录已移除。本机 Codex CLI 还存在既有 `service_tier = "default"` 与该旧版 CLI 不兼容、既有 `gpt-5.6-sol` 模型不受该旧版支持的问题，验收使用隔离临时配置和 `gpt-5.4`，未改写用户的这些既有设置。
+- 发布候选：`maa-mcp-adapter-v0.1.0-windows-x86_64.zip` 只含适配器 EXE、EXE 校验和、LICENSE、NOTICE、README 和四份文档。EXE SHA-256：`7ce65e3f30bd63e001a5ad85d0a07cc379e490c1e0417293dc58b3d003267e6b`；ZIP SHA-256：`471b572484981008433c0a10741a718c35055079ed6c879f3c4c7945ac6da9b4`。
+- 当前阻塞：真实游戏日常仍需具体任务汇总和用户最终确认；Codex 需换用声明 form elicitation 能力的客户端版本；两个客户端的关闭/重启恢复尚未人工执行。因此阶段 8 尚不能宣告最终通过，且仍未推送、打 Tag 或创建 GitHub Release。
 
 ---
 

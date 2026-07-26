@@ -5,7 +5,7 @@
 - [x] `cargo fmt --all -- --check`
 - [x] fake CLI crate 格式检查
 - [x] `cargo clippy --all-targets --all-features -- -D warnings`
-- [x] `cargo test --all-targets --all-features`：77 项通过
+- [x] `cargo test --all-targets --all-features`：78 项通过
 - [x] fake MAA 完整 STDIO 流程：
   `check_environment → get_daily_options → create → update → preview → execute → status → log → stop`
 - [x] elicitation accept、decline、cancel 和 capability 缺失
@@ -21,11 +21,11 @@
 
 ## 发布前必须人工完成
 
-- [ ] 在真实 `maa-cli` 上执行不启动游戏的 capability probe 和 dry-run。
+- [x] 在真实 `maa-cli v0.7.5` / MaaCore `v6.14.2` 上执行不启动游戏的 capability probe 和 dry-run。
 - [ ] 用户明确批准后，使用专用测试配置档完成一次真实安全日常。
 - [ ] 验证真实环境中的 CTRL_BREAK 优雅停止；失败时确认 Named Job 强制回退。
-- [ ] Claude Code：加载十个 Tools，完成 fake MAA 全流程和 form elicitation。
-- [ ] Codex：加载十个 Tools，完成 fake MAA 全流程和 form elicitation。
+- [x] Claude Code：加载十个 Tools，完成 fake MAA 全流程和 form elicitation。
+- [ ] Codex：已加载十个 Tools 并完成规划与预览；本机 CLI `0.111.0` 未声明 form elicitation 能力，尚未完成执行。
 - [ ] 两个客户端分别验证：关闭客户端后任务继续，重启后状态和日志可恢复。
 - [ ] 人工审阅 README、NOTICE、商标声明和发布说明。
 - [ ] 明确授权后再推送分支、创建 PR/Tag/GitHub Release。
