@@ -193,20 +193,7 @@ pub(crate) fn discover_gui_settings(path: &std::path::Path) -> Result<GuiDiscove
         .map_err(|_| format!("无法读取 MAA 图形版配置：{}", path.display()))?;
     let value: serde_json::Value = serde_json::from_str(&contents)
         .map_err(|_| format!("MAA 图形版配置不是有效 JSON：{}", path.display()))?;
-    let current = value
-        .get("Current")
-        .and_then(serde_json::Value::as_str)
-        .unwrap_or("Default");
-    let section = value
-        .get("Configurations")
-        .and_then(|configurations| {
-            configurations.get(current).or_else(|| {
-                configurations
-                    .as_object()
-                    .and_then(|entries| entries.values().next())
-            })
-        })
-        .unwrap_or(&value);
+    let section = crate::planning::maa_defaults::maa_current_section(&value);
     let text = |key: &str| {
         section
             .get(key)

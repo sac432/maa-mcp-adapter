@@ -126,7 +126,7 @@ pub(crate) fn parse_versions(output: &str) -> Result<(String, Option<String>), M
         .ok_or(MaaCliError::InvalidVersionOutput)
 }
 
-async fn parse_config_directory(output: &str) -> Result<PathBuf, MaaCliError> {
+pub(crate) async fn parse_config_directory(output: &str) -> Result<PathBuf, MaaCliError> {
     let lines = output
         .lines()
         .map(str::trim)

@@ -137,7 +137,7 @@ impl ExecutionService {
         plan_id: &PlanId,
         expected_plan_hash: &str,
     ) -> Result<PreparedExecution, ExecutionError> {
-        if !is_plan_hash(expected_plan_hash) {
+        if !crate::domain::is_sha256_hex(expected_plan_hash) {
             return Err(ExecutionError::InvalidExpectedHash);
         }
         let repository = FilePlanRepository::new(self.state_directory.clone())?;
@@ -447,13 +447,6 @@ impl ExecutionService {
 
 fn spawned_run_id(lock: &ActiveRunLock) -> RunId {
     lock.run_id()
-}
-
-fn is_plan_hash(value: &str) -> bool {
-    value.len() == 64
-        && value
-            .bytes()
-            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
 }
 
 fn unix_time_ms() -> Result<u64, ExecutionError> {

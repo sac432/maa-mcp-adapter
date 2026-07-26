@@ -15,15 +15,7 @@ pub fn derive_default_tasks(gui_config_path: &Path) -> Option<Vec<DailyTask>> {
     let queue_path = task_queue_path(gui_config_path)?;
     let contents = std::fs::read_to_string(queue_path).ok()?;
     let value: Value = serde_json::from_str(&contents).ok()?;
-    let current = value
-        .get("Current")
-        .and_then(Value::as_str)
-        .unwrap_or("Default");
-    let queue = value
-        .get("Configurations")?
-        .get(current)?
-        .get("TaskQueue")?
-        .as_array()?;
+    let queue = maa_current_section(&value).get("TaskQueue")?.as_array()?;
 
     let mut tasks = Vec::new();
     for entry in queue {
@@ -73,6 +65,26 @@ pub fn derive_default_tasks(gui_config_path: &Path) -> Option<Vec<DailyTask>> {
     }
 
     if tasks.is_empty() { None } else { Some(tasks) }
+}
+
+/// MAA 图形版配置的通用外层形态：顶层 `Current` 选择 `Configurations`
+/// 中的一节；缺失 `Current` 时退回 `Default` 或首个配置；旧版扁平文件
+/// 没有该包装，返回原值本身。`gui.json` 与 `gui.new.json` 共用此结构。
+pub(crate) fn maa_current_section(value: &Value) -> &Value {
+    let current = value
+        .get("Current")
+        .and_then(Value::as_str)
+        .unwrap_or("Default");
+    value
+        .get("Configurations")
+        .and_then(|configurations| {
+            configurations.get(current).or_else(|| {
+                configurations
+                    .as_object()
+                    .and_then(|entries| entries.values().next())
+            })
+        })
+        .unwrap_or(value)
 }
 
 /// `maa_gui_config` 指向 `gui.json`；任务队列存放在同目录的

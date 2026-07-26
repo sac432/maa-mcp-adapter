@@ -5,8 +5,8 @@ use std::sync::Arc;
 use rmcp::Json;
 use rmcp::model::JsonObject;
 use schemars::JsonSchema;
-use serde::Serialize;
 use serde::de::DeserializeOwned;
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use crate::domain::{DailyTask, PlanId, PlanState, RunId};
@@ -407,6 +407,49 @@ fn task_kind_name(task: TaskKind) -> &'static str {
 
 pub(crate) fn path_search_value() -> Option<OsString> {
     std::env::var_os("PATH")
+}
+
+/// 需要用户表单确认的工具（执行、初始化）共用的确认载体。
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct FormConfirmation {
+    #[schemars(description = "确认执行上述内容时选择 true，否则选择 false")]
+    pub(crate) confirmed: bool,
+}
+
+rmcp::elicit_safe!(FormConfirmation);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum FormDecision {
+    Confirmed,
+    Cancelled,
+    Declined,
+}
+
+/// 统一的表单确认流程：把 elicitation 的全部结果归约为三种决策，
+/// 客户端不支持表单或通信失败时返回结构化错误。
+pub(crate) async fn elicit_form_decision(
+    peer: &rmcp::Peer<rmcp::RoleServer>,
+    message: String,
+) -> Result<FormDecision, ToolError> {
+    use rmcp::service::ElicitationError;
+    match peer.elicit::<FormConfirmation>(message).await {
+        Ok(Some(confirmation)) if confirmation.confirmed => Ok(FormDecision::Confirmed),
+        Ok(Some(_)) | Err(ElicitationError::UserDeclined) => Ok(FormDecision::Declined),
+        Ok(None) | Err(ElicitationError::UserCancelled) => Ok(FormDecision::Cancelled),
+        Err(ElicitationError::CapabilityNotSupported) => Err(ToolError::new(
+            "CLIENT_ELICITATION_UNSUPPORTED",
+            "当前 MCP 客户端未声明表单 elicitation 能力。",
+            Vec::new(),
+            vec!["使用支持 MCP elicitation 的客户端重新连接后再发起。".to_owned()],
+        )),
+        Err(_) => Err(ToolError::new(
+            "ELICITATION_FAILED",
+            "无法取得可靠的表单确认。",
+            Vec::new(),
+            vec!["重新查看内容后重新发起请求。".to_owned()],
+        )),
+    }
 }
 
 pub type SharedRuntime = Arc<AdapterRuntime>;

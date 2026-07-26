@@ -4,7 +4,6 @@ use std::io::Write as _;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
-use rmcp::service::ElicitationError;
 use rmcp::{Peer, RoleServer};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -13,7 +12,9 @@ use crate::config::{AdapterConfig, ConfirmationMode};
 use crate::storage::resolve_state_directory;
 use crate::tools::environment::discover_gui_settings;
 
-use super::{SharedRuntime, ToolError, ToolResult, path_search_value};
+use super::{
+    FormDecision, SharedRuntime, ToolError, ToolResult, elicit_form_decision, path_search_value,
+};
 
 const PROBE_TIMEOUT: Duration = Duration::from_secs(10);
 
@@ -44,15 +45,6 @@ pub struct SetupEnvironmentOutput {
     pub notes: Vec<String>,
     pub next_steps: Vec<String>,
 }
-
-#[derive(Debug, Serialize, Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
-struct SetupConfirmation {
-    #[schemars(description = "同意按上述内容写入时选择 true，否则选择 false")]
-    confirmed: bool,
-}
-
-rmcp::elicit_safe!(SetupConfirmation);
 
 pub async fn setup_environment(
     runtime: &SharedRuntime,
@@ -185,33 +177,17 @@ pub async fn setup_environment(
     let _ = write!(plan, "\n是否确认按以上内容写入？");
 
     if config.confirmation == ConfirmationMode::Elicitation {
-        let confirmation = match peer.elicit::<SetupConfirmation>(plan.clone()).await {
-            Ok(Some(confirmation)) => confirmation,
-            Ok(None) | Err(ElicitationError::UserCancelled) => {
+        match elicit_form_decision(&peer, plan.clone())
+            .await
+            .map_err(rmcp::Json)?
+        {
+            FormDecision::Confirmed => {}
+            FormDecision::Cancelled => {
                 return Ok(rmcp::Json(not_applied("cancelled", &profile_name)));
             }
-            Err(ElicitationError::UserDeclined) => {
+            FormDecision::Declined => {
                 return Ok(rmcp::Json(not_applied("declined", &profile_name)));
             }
-            Err(ElicitationError::CapabilityNotSupported) => {
-                return Err(rmcp::Json(ToolError::new(
-                    "CLIENT_ELICITATION_UNSUPPORTED",
-                    "当前 MCP 客户端未声明表单 elicitation 能力。",
-                    Vec::new(),
-                    vec!["使用支持表单的客户端执行初始化。".to_owned()],
-                )));
-            }
-            Err(_) => {
-                return Err(rmcp::Json(ToolError::new(
-                    "ELICITATION_FAILED",
-                    "无法取得可靠的初始化确认。",
-                    Vec::new(),
-                    vec!["重新发起 setup_environment。".to_owned()],
-                )));
-            }
-        };
-        if !confirmation.confirmed {
-            return Ok(rmcp::Json(not_applied("declined", &profile_name)));
         }
     }
 
@@ -302,14 +278,9 @@ async fn maa_profiles_directory(executable: &Path) -> Result<PathBuf, ()> {
     let output = crate::maa_cli::process::run(executable, &args, PROBE_TIMEOUT)
         .await
         .map_err(|_| ())?;
-    let line = output.stdout.trim();
-    if line.is_empty() {
-        return Err(());
-    }
-    let directory = PathBuf::from(line);
-    if !directory.is_absolute() || !directory.is_dir() {
-        return Err(());
-    }
+    let directory = crate::maa_cli::parse_config_directory(&output.stdout)
+        .await
+        .map_err(|_| ())?;
     let profiles = directory.join("profiles");
     std::fs::create_dir_all(&profiles).map_err(|_| ())?;
     Ok(profiles)

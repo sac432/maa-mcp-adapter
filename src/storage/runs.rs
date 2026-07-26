@@ -304,11 +304,7 @@ fn verify_active_run_owner(path: &Path, run_id: &RunId) -> Result<(), StorageErr
 }
 
 fn validate_task_hash(value: &str) -> Result<(), StorageError> {
-    let valid = value.len() == 64
-        && value
-            .bytes()
-            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte));
-    if valid {
+    if crate::domain::is_sha256_hex(value) {
         Ok(())
     } else {
         Err(StorageError::InvalidTaskHash)

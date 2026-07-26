@@ -57,11 +57,7 @@ impl<'de> Deserialize<'de> for PlanHash {
         D: Deserializer<'de>,
     {
         let value = String::deserialize(deserializer)?;
-        let valid = value.len() == 64
-            && value
-                .bytes()
-                .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte));
-        if valid {
+        if super::is_sha256_hex(&value) {
             Ok(Self(value))
         } else {
             Err(D::Error::custom(

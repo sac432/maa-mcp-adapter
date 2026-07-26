@@ -10,10 +10,14 @@ use super::{PlanViewOutput, SharedRuntime, ToolError, ToolResult, parse_plan_id,
 #[serde(deny_unknown_fields)]
 pub struct CreateDailyPlanInput {
     #[serde(default)]
+    #[schemars(description = "用户的一句话意图，仅供 Agent 组织对话；服务器不解析此字段。")]
     pub intent: Option<String>,
     #[serde(default)]
     pub profile: Option<String>,
     #[serde(default)]
+    #[schemars(
+        description = "留空时：若配置了 maa_gui_config，则从 MAA 保存的任务队列确定性派生默认计划。"
+    )]
     pub tasks: Vec<DailyTask>,
 }
 
@@ -42,10 +46,6 @@ pub fn create_daily_plan(
     runtime: &SharedRuntime,
     input: CreateDailyPlanInput,
 ) -> ToolResult<PlanViewOutput> {
-    let _intent_was_supplied = input
-        .intent
-        .as_ref()
-        .is_some_and(|intent| !intent.trim().is_empty());
     let tasks = if input.tasks.is_empty() {
         match runtime.config() {
             Ok(config) => config

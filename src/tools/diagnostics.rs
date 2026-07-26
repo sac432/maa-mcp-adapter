@@ -53,15 +53,17 @@ pub async fn collect_diagnostics(
         std::env::consts::ARCH
     );
 
-    match runtime.config() {
+    let config = match runtime.config() {
         Ok(config) => {
             append_maa_versions(&mut report, &config).await;
             append_config_shape(&mut report, &config);
+            Some(config)
         }
         Err(issue) => {
             let _ = writeln!(report, "- 适配器启动问题：{}", issue.code);
+            None
         }
-    }
+    };
 
     match runtime.state_directory() {
         Ok(state_directory) => {
@@ -74,8 +76,7 @@ pub async fn collect_diagnostics(
                     None => "无".to_owned(),
                 }
             );
-            let patterns = runtime
-                .config()
+            let patterns = config
                 .map(|config| config.redaction_patterns.clone())
                 .unwrap_or_default();
             append_recent_runs(&mut report, &state_directory, patterns, focus);

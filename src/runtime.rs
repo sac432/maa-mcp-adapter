@@ -53,7 +53,18 @@ impl AdapterRuntime {
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         let current = config_modified_time();
         if current != cached.config_modified {
-            *cached = Self::snapshot();
+            let fresh = Self::snapshot();
+            // 状态目录热切换会让活动锁与运行记录跨目录脱节（可能出现双活动
+            // 运行），因此整个新配置钉住到重启为止；其余变更整体原子生效。
+            let state_directory_moved = matches!(
+                (&cached.state_directory, &fresh.state_directory),
+                (Some(old), Some(new)) if old != new
+            );
+            if state_directory_moved {
+                cached.config_modified = fresh.config_modified;
+            } else {
+                *cached = fresh;
+            }
         }
         cached
     }
