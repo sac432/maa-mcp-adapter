@@ -8,6 +8,7 @@ pub mod process;
 pub mod task_file;
 
 pub use inspect::MaaCliError;
+pub(crate) use inspect::parse_versions;
 
 #[derive(Debug, Clone)]
 pub struct MaaCliAdapter {

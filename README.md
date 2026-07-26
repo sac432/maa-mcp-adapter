@@ -48,7 +48,7 @@ Agent 不能从一句模糊请求直接启动 MAA。标准流程是：
 
 完整威胁模型见 [安全模型](docs/security-model.md)。
 
-## 十个 MCP Tools
+## 十一个 MCP Tools
 
 | Tool | 用途 |
 |---|---|
@@ -62,6 +62,7 @@ Agent 不能从一句模糊请求直接启动 MAA。标准流程是：
 | `get_run_status` | 查询并核对运行状态 |
 | `get_run_log` | 读取受限、脱敏的日志尾部 |
 | `stop_run` | 精确停止记录中的 Windows Job |
+| `collect_diagnostics` | 生成脱敏诊断报告并指向 GitHub 反馈 |
 
 ## 构建
 

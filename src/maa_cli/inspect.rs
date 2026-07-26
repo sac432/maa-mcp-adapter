@@ -107,7 +107,7 @@ async fn optional_probe(
     }
 }
 
-fn parse_versions(output: &str) -> Result<(String, Option<String>), MaaCliError> {
+pub(crate) fn parse_versions(output: &str) -> Result<(String, Option<String>), MaaCliError> {
     let cli_version = output.lines().find_map(|line| {
         line.trim()
             .strip_prefix("maa-cli v")

@@ -16,6 +16,7 @@ use crate::planning::{MissingField, TaskKind, ValidationError};
 use crate::runtime::{AdapterRuntime, RuntimeIssue};
 use crate::storage::{FilePlanRepository, StorageError};
 
+pub mod diagnostics;
 pub mod environment;
 pub mod plans;
 pub mod runs;

@@ -7,6 +7,7 @@ use rmcp::{
 
 use crate::error::AdapterResult;
 use crate::runtime::AdapterRuntime;
+use crate::tools::diagnostics::{CollectDiagnosticsInput, CollectDiagnosticsOutput};
 use crate::tools::environment::{
     CheckEnvironmentInput, CheckEnvironmentOutput, DailyOptionsOutput, GetDailyOptionsInput,
 };
@@ -21,7 +22,9 @@ use crate::tools::{PlanViewOutput, SharedRuntime, ToolError, ToolResult, parse_a
 
 const SERVER_INSTRUCTIONS: &str = "\
 引导用户补全日常计划，展示完整中文摘要并取得确认后，\
-才能调用执行工具。不得尝试绕过服务器端安全策略。";
+才能调用执行工具。不得尝试绕过服务器端安全策略。\
+工具报错且按 recovery 无法恢复时，调用 collect_diagnostics \
+生成脱敏报告，请用户核对后到 GitHub 反馈。";
 
 #[derive(Debug, Clone)]
 struct AdapterServer {
@@ -88,6 +91,26 @@ impl AdapterServer {
     ) -> ToolResult<CheckEnvironmentOutput> {
         let _: CheckEnvironmentInput = parse_arguments(arguments)?;
         crate::tools::environment::check_environment(&self.runtime).await
+    }
+
+    #[tool(
+        name = "collect_diagnostics",
+        description = "生成脱敏的本地诊断报告（版本、环境、配置形状、最近运行与日志尾部）并给出 GitHub 反馈地址；不修改任何状态。",
+        input_schema = schema_for_type::<CollectDiagnosticsInput>(),
+        annotations(
+            title = "收集诊断报告",
+            read_only_hint = true,
+            destructive_hint = false,
+            idempotent_hint = true,
+            open_world_hint = false
+        )
+    )]
+    async fn collect_diagnostics(
+        &self,
+        arguments: rmcp::model::JsonObject,
+    ) -> ToolResult<CollectDiagnosticsOutput> {
+        let input = parse_arguments(arguments)?;
+        crate::tools::diagnostics::collect_diagnostics(&self.runtime, input).await
     }
 
     #[tool(

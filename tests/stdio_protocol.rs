@@ -103,6 +103,7 @@ fn stdio_server_initializes_and_lists_tools() {
         [
             "cancel_daily_plan",
             "check_environment",
+            "collect_diagnostics",
             "create_daily_plan",
             "execute_daily_plan",
             "get_daily_options",
@@ -501,6 +502,78 @@ fn run_tools_return_strict_status_bounded_log_and_safe_stop_error() {
         json!({"run_id": run_id.to_string(), "stream": "stdout", "extra": true}),
     );
     assert_tool_error(&unknown, "INVALID_ARGUMENTS");
+    client.finish();
+}
+
+#[test]
+fn collect_diagnostics_produces_a_redacted_pasteable_report() {
+    let mut client =
+        McpClient::spawn_with_config(Some("redaction_patterns = [\"secret-value\"]\n"));
+    client.initialize();
+    let state = client._data.path().join("maa-mcp-adapter");
+    let run_id = RunId::new();
+    let run_directory = state.join("runs").join(run_id.to_string());
+    std::fs::create_dir_all(&run_directory).expect("run directory");
+    std::fs::write(run_directory.join("stdout.log"), "").expect("stdout");
+    let profile_path = std::env::var("USERPROFILE").expect("USERPROFILE available");
+    std::fs::write(
+        run_directory.join("stderr.log"),
+        format!("token=secret-value at {profile_path}\\AppData\\some.log\nStartUp Start\n"),
+    )
+    .expect("stderr");
+    std::fs::write(
+        run_directory.join("task.toml"),
+        "[[tasks]]\ntype = \"StartUp\"\n\n[tasks.params]\nstart_game_enabled = true\n",
+    )
+    .expect("task file");
+    let plan = DailyPlan::new("default", vec![DailyTask::Infrast(InfrastPlan {})]);
+    let record = RunRecord {
+        run_id,
+        plan_id: plan.plan_id,
+        plan_hash: hash_plan(&plan).expect("plan hash"),
+        revision: 0,
+        pid: 42,
+        process_start_identity: ProcessStartIdentity {
+            creation_time_100ns: 123,
+        },
+        task_path: run_directory.join("task.toml"),
+        task_sha256: "a".repeat(64),
+        stdout_path: run_directory.join("stdout.log"),
+        stderr_path: run_directory.join("stderr.log"),
+        status: RunStatus::Failed,
+        exit_code: Some(-1073741819),
+        stop_method: None,
+        started_at_unix_ms: 1_000,
+        finished_at_unix_ms: Some(42_000),
+    };
+    FileRunRepository::new(state)
+        .expect("run repository")
+        .create(&record)
+        .expect("record");
+
+    let response = client.call(50, "collect_diagnostics", json!({}));
+    let output = &response["result"]["structuredContent"];
+
+    assert_eq!(
+        output["issue_url"],
+        "https://github.com/sac432/maa-mcp-adapter/issues/new"
+    );
+    let report = output["report_markdown"].as_str().expect("report text");
+    assert!(report.contains("[REDACTED]"), "redaction applied: {report}");
+    assert!(!report.contains("secret-value"), "secret must not leak");
+    assert!(report.contains("0xC0000005"), "exit code shown as hex");
+    assert!(report.contains("StartUp"), "task types included");
+    assert!(report.contains("%USERPROFILE%"), "user paths masked");
+    assert!(
+        !report
+            .to_ascii_lowercase()
+            .contains(&profile_path.to_ascii_lowercase()),
+        "raw user profile path must not leak"
+    );
+    assert!(
+        report.contains("复现步骤"),
+        "issue template sections present"
+    );
     client.finish();
 }
 
