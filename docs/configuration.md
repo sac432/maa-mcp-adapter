@@ -162,12 +162,17 @@ locks\active-run.lock
 
 ## 修改配置后的步骤
 
-1. 停止并重新启动 MCP 客户端中的 `maa` Server。
-2. 调用 `check_environment`。
-3. 确认 `can_plan = true`。
-4. 只有所有能力探测通过且 `can_execute = true` 时才执行计划。
+配置按 `config.toml` 的修改时间**热加载**：`setup_environment` 或手动编辑
+保存后，下一个工具调用即生效，无需重启 MCP Server。验证顺序：
 
-配置解析拒绝未知字段。错误不会自动退回不安全默认值。
+1. 调用 `check_environment`。
+2. 确认 `can_plan = true`。
+3. 只有所有能力探测通过且 `can_execute = true` 时才执行计划。
+
+配置解析拒绝未知字段。错误不会自动退回不安全默认值：配置损坏时所有
+工具返回 `CONFIG_INVALID`，修复文件后自动恢复。仅当修改
+`state_directory`（迁移状态目录）时仍建议重启 Server，避免运行中任务
+的记录与新目录脱节。
 
 ## 故障排查：`api.maa.plus` 不可达
 

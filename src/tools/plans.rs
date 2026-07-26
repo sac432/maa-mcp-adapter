@@ -47,12 +47,14 @@ pub fn create_daily_plan(
         .as_ref()
         .is_some_and(|intent| !intent.trim().is_empty());
     let tasks = if input.tasks.is_empty() {
-        runtime
-            .config()
-            .ok()
-            .and_then(|config| config.maa_gui_config.as_deref())
-            .and_then(crate::planning::maa_defaults::derive_default_tasks)
-            .unwrap_or_default()
+        match runtime.config() {
+            Ok(config) => config
+                .maa_gui_config
+                .as_deref()
+                .and_then(crate::planning::maa_defaults::derive_default_tasks)
+                .unwrap_or_default(),
+            Err(_) => Vec::new(),
+        }
     } else {
         input.tasks
     };

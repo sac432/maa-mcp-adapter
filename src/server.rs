@@ -22,6 +22,8 @@ use crate::tools::setup::{SetupEnvironmentInput, SetupEnvironmentOutput};
 use crate::tools::{PlanViewOutput, SharedRuntime, ToolError, ToolResult, parse_arguments};
 
 const SERVER_INSTRUCTIONS: &str = "\
+先调用 check_environment；can_execute 为 false 且缺少配置档或连接信息时，\
+经用户同意调用 setup_environment 一键初始化（配置写入后即时生效，无需重启）。\
 引导用户补全日常计划，展示完整中文摘要并取得确认后，\
 才能调用执行工具。不得尝试绕过服务器端安全策略。\
 工具报错且按 recovery 无法恢复时，调用 collect_diagnostics \
@@ -56,7 +58,7 @@ impl AdapterServer {
     fn new() -> Self {
         let runtime = std::sync::Arc::new(AdapterRuntime::from_environment());
         if let Ok(state_directory) = runtime.state_directory() {
-            let _ = crate::runs::recover_active_run(state_directory);
+            let _ = crate::runs::recover_active_run(&state_directory);
             if let Ok(repository) =
                 crate::storage::FileRunRepository::new(state_directory.to_path_buf())
             {

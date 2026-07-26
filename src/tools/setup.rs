@@ -270,7 +270,7 @@ pub async fn setup_environment(
         emulator_configured: emulator.is_some(),
         notes,
         next_steps: vec![
-            "重启 MCP 客户端中的 maa Server 以加载新配置。".to_owned(),
+            "配置已即时生效（热加载），无需重启。".to_owned(),
             "调用 check_environment，确认 can_execute = true。".to_owned(),
         ],
     }))

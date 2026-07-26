@@ -55,8 +55,8 @@ pub async fn collect_diagnostics(
 
     match runtime.config() {
         Ok(config) => {
-            append_maa_versions(&mut report, config).await;
-            append_config_shape(&mut report, config);
+            append_maa_versions(&mut report, &config).await;
+            append_config_shape(&mut report, &config);
         }
         Err(issue) => {
             let _ = writeln!(report, "- 适配器启动问题：{}", issue.code);
@@ -65,7 +65,7 @@ pub async fn collect_diagnostics(
 
     match runtime.state_directory() {
         Ok(state_directory) => {
-            let lock = active_run_id(state_directory).ok().flatten();
+            let lock = active_run_id(&state_directory).ok().flatten();
             let _ = writeln!(
                 report,
                 "- 活动锁：{}",
@@ -78,7 +78,7 @@ pub async fn collect_diagnostics(
                 .config()
                 .map(|config| config.redaction_patterns.clone())
                 .unwrap_or_default();
-            append_recent_runs(&mut report, state_directory, patterns, focus);
+            append_recent_runs(&mut report, &state_directory, patterns, focus);
         }
         Err(issue) => {
             let _ = writeln!(report, "- 状态目录不可用：{}", issue.code);

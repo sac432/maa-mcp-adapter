@@ -128,9 +128,19 @@ pub async fn check_environment(runtime: &SharedRuntime) -> ToolResult<CheckEnvir
         .map_err(ToolError::from_runtime)
         .map_err(rmcp::Json)?;
     let adapter = MaaCliAdapter::new(resolved.path);
-    match adapter.inspect_environment(state_directory).await {
+    match adapter.inspect_environment(&state_directory).await {
         Ok(environment) => {
             let can_execute = environment.can_execute();
+            if environment.profiles.is_empty() {
+                diagnostics.push(Diagnostic {
+                    code: "SETUP_AVAILABLE".to_owned(),
+                    message: "未发现可用的 maa-cli 配置档。".to_owned(),
+                    recovery: vec![
+                        "经用户同意后调用 setup_environment 一键初始化（会展示将写入的内容并等待确认）。"
+                            .to_owned(),
+                    ],
+                });
+            }
             diagnostics.extend(
                 environment
                     .diagnostics

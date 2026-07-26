@@ -545,6 +545,13 @@ fn setup_environment_writes_profile_and_emulator_config_once() {
         .expect("serialize gui fixture"),
     )
     .expect("write gui fixture");
+    std::fs::write(
+        gui_dir.join("gui.new.json"),
+        r#"{"Configurations":{"Default":{"TaskQueue":[
+            {"TaskType":"StartUp","IsEnable":true},
+            {"TaskType":"Infrast","IsEnable":true}]}},"Current":"Default"}"#,
+    )
+    .expect("write task queue fixture");
 
     let executable = fake
         .executable()
@@ -598,6 +605,19 @@ fn setup_environment_writes_profile_and_emulator_config_once() {
     assert_eq!(
         output["adapter_config_updated"], false,
         "second run adds nothing"
+    );
+
+    let derived = client.call(12, "create_daily_plan", json!({"profile": "default"}));
+    let kinds: Vec<&str> = derived["result"]["structuredContent"]["tasks"]
+        .as_array()
+        .expect("derived tasks")
+        .iter()
+        .map(|task| task["type"].as_str().expect("task type"))
+        .collect();
+    assert_eq!(
+        kinds,
+        ["start_up", "infrast"],
+        "hot-reloaded maa_gui_config drives default derivation in the same session"
     );
     client.finish();
 }

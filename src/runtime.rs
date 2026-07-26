@@ -1,60 +1,102 @@
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
+use std::sync::{Arc, Mutex};
+use std::time::SystemTime;
 
 use crate::config::{AdapterConfig, ConfigError};
 use crate::storage::{StorageError, resolve_state_directory};
 
+/// 运行时按 `config.toml` 的修改时间热加载配置：`setup_environment` 或
+/// 用户编辑配置后，下一个工具调用即生效，无需重启 MCP Server。
 #[derive(Debug)]
 pub struct AdapterRuntime {
-    config: Option<AdapterConfig>,
+    cached: Mutex<CachedRuntime>,
+}
+
+#[derive(Debug)]
+struct CachedRuntime {
+    config: Option<Arc<AdapterConfig>>,
     state_directory: Option<PathBuf>,
-    startup_issue: Option<RuntimeIssue>,
+    issue: Option<RuntimeIssue>,
+    config_modified: Option<SystemTime>,
 }
 
 impl AdapterRuntime {
     pub fn from_environment() -> Self {
+        Self {
+            cached: Mutex::new(Self::snapshot()),
+        }
+    }
+
+    fn snapshot() -> CachedRuntime {
+        let config_modified = config_modified_time();
         match load_runtime() {
-            Ok((config, state_directory)) => Self {
-                config: Some(config),
+            Ok((config, state_directory)) => CachedRuntime {
+                config: Some(Arc::new(config)),
                 state_directory: Some(state_directory),
-                startup_issue: None,
+                issue: None,
+                config_modified,
             },
-            Err(issue) => Self {
+            Err(issue) => CachedRuntime {
                 config: None,
                 state_directory: None,
-                startup_issue: Some(issue),
+                issue: Some(issue),
+                config_modified,
             },
         }
     }
 
-    pub fn config(&self) -> Result<&AdapterConfig, RuntimeIssue> {
-        self.config.as_ref().ok_or_else(|| self.startup_issue())
+    fn refreshed(&self) -> std::sync::MutexGuard<'_, CachedRuntime> {
+        let mut cached = self
+            .cached
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let current = config_modified_time();
+        if current != cached.config_modified {
+            *cached = Self::snapshot();
+        }
+        cached
     }
 
-    pub fn state_directory(&self) -> Result<&Path, RuntimeIssue> {
-        self.state_directory
-            .as_deref()
-            .ok_or_else(|| self.startup_issue())
+    pub fn config(&self) -> Result<Arc<AdapterConfig>, RuntimeIssue> {
+        let cached = self.refreshed();
+        cached.config.clone().ok_or_else(|| issue_of(&cached))
+    }
+
+    pub fn state_directory(&self) -> Result<PathBuf, RuntimeIssue> {
+        let cached = self.refreshed();
+        cached
+            .state_directory
+            .clone()
+            .ok_or_else(|| issue_of(&cached))
     }
 
     pub fn can_plan(&self) -> bool {
-        self.startup_issue.is_none()
+        self.refreshed().issue.is_none()
     }
 
-    pub fn startup_issue_ref(&self) -> Option<&RuntimeIssue> {
-        self.startup_issue.as_ref()
+    pub fn startup_issue_ref(&self) -> Option<RuntimeIssue> {
+        self.refreshed().issue.clone()
     }
+}
 
-    fn startup_issue(&self) -> RuntimeIssue {
-        self.startup_issue.clone().unwrap_or_else(|| {
-            RuntimeIssue::new(
-                "RUNTIME_UNAVAILABLE",
-                "适配器运行环境不可用。",
-                Vec::new(),
-                vec!["检查适配器配置后重试。".to_owned()],
-            )
-        })
-    }
+fn issue_of(cached: &CachedRuntime) -> RuntimeIssue {
+    cached.issue.clone().unwrap_or_else(|| {
+        RuntimeIssue::new(
+            "RUNTIME_UNAVAILABLE",
+            "适配器运行环境不可用。",
+            Vec::new(),
+            vec!["检查适配器配置后重试。".to_owned()],
+        )
+    })
+}
+
+fn config_modified_time() -> Option<SystemTime> {
+    let local_app_data = std::env::var_os("LOCALAPPDATA")?;
+    let default_state = resolve_state_directory(None, Some(&local_app_data)).ok()?;
+    fs::metadata(default_state.join("config.toml"))
+        .and_then(|metadata| metadata.modified())
+        .ok()
 }
 
 #[derive(Debug, Clone)]
