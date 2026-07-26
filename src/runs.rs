@@ -408,7 +408,8 @@ fn read_log_tail(path: &Path, patterns: &[String]) -> Result<LogTail, RunControl
         }
     }
     let mut content = lines.join("\n");
-    if content.len() > MAX_LOG_BYTES as usize {
+    let byte_truncated = content.len() > MAX_LOG_BYTES as usize;
+    if byte_truncated {
         let mut start = content.len() - MAX_LOG_BYTES as usize;
         while !content.is_char_boundary(start) {
             start += 1;
@@ -420,7 +421,7 @@ fn read_log_tail(path: &Path, patterns: &[String]) -> Result<LogTail, RunControl
         content,
         lines,
         bytes,
-        truncated: start > 0 || line_truncated,
+        truncated: start > 0 || line_truncated || byte_truncated,
     })
 }
 
@@ -428,4 +429,32 @@ fn unix_time_ms() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map_or(0, |duration| duration.as_millis() as u64)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{MAX_LOG_BYTES, read_log_tail};
+
+    #[test]
+    fn redaction_growth_past_the_byte_cap_still_bounds_and_reports_truncation() {
+        let temp = tempfile::tempdir().expect("temporary log directory");
+        let path = temp.path().join("stdout.log");
+        let line = "sec".repeat(200);
+        let raw = vec![line.as_str(); 100].join("\n");
+        assert!(
+            raw.len() as u64 <= MAX_LOG_BYTES,
+            "raw fixture must fit the byte cap"
+        );
+        std::fs::write(&path, &raw).expect("write log fixture");
+
+        let tail = read_log_tail(&path, &["sec".to_owned()]).expect("read redacted log tail");
+
+        assert!(tail.bytes <= MAX_LOG_BYTES as usize);
+        assert_eq!(tail.content.len(), tail.bytes);
+        assert!(!tail.content.contains("sec"));
+        assert!(
+            tail.truncated,
+            "byte-capped content must be reported as truncated"
+        );
+    }
 }
