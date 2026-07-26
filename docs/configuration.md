@@ -19,6 +19,14 @@ redaction_patterns = [
   'device-serial-value',
   'private-token-value',
 ]
+confirmation = "elicitation"
+maa_gui_config = 'C:\MAA\config\gui.json'
+
+[emulator]
+path = 'D:\Program Files\Netease\MuMu Player 12\shell\MuMuPlayer.exe'
+address = "127.0.0.1:16384"
+startup_wait_seconds = 60
+stop_after_run = false
 ```
 
 Windows 路径建议使用 TOML 单引号字面字符串，以免对反斜杠重复转义。所有路径必须是绝对路径，不能包含 `.` 或 `..` 路径段。
@@ -75,6 +83,36 @@ locks\active-run.lock
 - token、cookie 或私有服务标识。
 
 这些模式不是正则表达式，按大小写敏感的字面文本匹配。不要把秘密本身提交到公开仓库；个人配置应保留在默认用户状态目录。
+
+### `confirmation`
+
+可选，默认 `"elicitation"`。
+
+- `"elicitation"`：执行前必须通过 MCP form elicitation 表单确认（默认，推荐）。
+- `"none"`：跳过表单，`execute_daily_plan` 在校验通过后直接启动。此时
+  `expected_summary` 的逐字校验和客户端工具授权界面（参数中包含完整摘要）
+  成为唯一的人工可见关卡。仅建议在单人、可信、明确接受风险的环境使用；
+  客户端不支持表单渲染时这是完成执行的替代方式。
+
+### `maa_gui_config`
+
+可选。指向 MAA 图形版的 `gui.json` 绝对路径。配置后 `check_environment`
+会**只读**解析并在 `gui_discovery` 字段回报其中的 adb 路径、连接地址和
+模拟器路径，作为填写 maa-cli 配置档与 `[emulator]` 的参考。适配器不会
+修改该文件。
+
+### `[emulator]`
+
+可选整节。配置后，执行计划前适配器会确保模拟器在线：`address` 可连通则
+不做任何事；否则启动 `path` 指向的可执行文件并轮询 `address` 直至可连通
+（未配置 `address` 时只做定长等待）。
+
+- `path`：模拟器可执行文件的绝对路径（必填）。
+- `address`：ADB 连接地址，如 `"127.0.0.1:16384"`，用于在线探测。
+- `startup_wait_seconds`：启动等待上限，默认 `60`。
+- `stop_after_run`：默认 `false`。为 `true` 时，运行进入终态后关闭
+  **由适配器本次启动**的模拟器进程（PID 与进程创建时间双重匹配才关闭；
+  已在运行的模拟器永远不会被关闭）。
 
 ## 修改配置后的步骤
 

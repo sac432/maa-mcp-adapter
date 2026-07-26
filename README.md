@@ -9,9 +9,8 @@ Unofficial MCP adapter for MAA.
 
 ## 当前状态
 
-项目处于 `0.1.0` MVP 发布准备阶段。fake CLI 自动化测试已覆盖完整协议和失败路径，真实 `maa-cli v0.7.5` / MaaCore `v6.14.2` 的 capability probe 与不启动游戏的 dry-run 已通过，Claude Code 实际 UI 的完整 fake MAA 流程和 form elicitation 也已通过。发布前仍需：
+项目处于 `0.1.0` MVP 发布准备阶段。fake CLI 自动化测试已覆盖完整协议和失败路径；真实 `maa-cli v0.7.5` / MaaCore `v6.14.2` 上已通过 capability probe、不启动游戏的 dry-run，以及一次经 Claude Code CLI form elicitation 确认、在真机模拟器上完整成功的真实安全日常。发布前仍需：
 
-- 由用户明确同意后，在专用测试配置档上执行一次真实安全日常；
 - 使用支持 MCP form elicitation 的 Codex 客户端完成最终确认与 fake MAA 执行验收；
 - 分别验证 Claude Code 与 Codex 关闭、重启后的运行恢复。
 
@@ -26,12 +25,16 @@ Agent 不能从一句模糊请求直接启动 MAA。标准流程是：
 → Agent 逐项询问缺失信息
 → 创建/更新 Draft
 → 生成完整中文摘要和计划哈希
+→ Agent 原样携带摘要与哈希调用执行（服务端逐字核对）
 → MCP 客户端显示二次确认表单
 → 用户接受准确摘要
 → Server 再次核对 revision、策略、摘要和哈希
 → dry-run
 → 启动唯一后台任务
 ```
+
+单人可信环境可通过 `confirmation = "none"` 显式跳过表单一步（其余校验不变，
+摘要仍随调用参数展示在客户端授权界面），详见[适配器配置](docs/configuration.md)。
 
 固定限制包括：
 

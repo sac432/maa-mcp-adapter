@@ -5,7 +5,7 @@
 - [x] `cargo fmt --all -- --check`
 - [x] fake CLI crate 格式检查
 - [x] `cargo clippy --all-targets --all-features -- -D warnings`
-- [x] `cargo test --all-targets --all-features`：80 项通过
+- [x] `cargo test --all-targets --all-features`：90 项通过
 - [x] fake MAA 完整 STDIO 流程：
   `check_environment → get_daily_options → create → update → preview → execute → status → log → stop`
 - [x] elicitation accept、decline、cancel 和 capability 缺失

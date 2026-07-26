@@ -52,12 +52,19 @@
 
 1. 完整计划规范化为稳定结构。
 2. 对规范计划计算 SHA-256。
-3. elicitation 同时展示完整中文摘要和哈希。
-4. 用户接受后，Server 重新加载计划。
-5. 再次核对 state、revision、安全策略、摘要和哈希。
-6. 任一变化返回 `PLAN_CHANGED`，不创建进程。
+3. `execute_daily_plan` 必须携带 `expected_plan_hash` 和 `expected_summary`；
+   后者与服务端生成的摘要逐字比对，不一致返回 `PLAN_SUMMARY_MISMATCH`。
+   摘要因此出现在客户端工具授权界面的参数中，Agent 无法伪造展示内容。
+4. elicitation 同时展示完整中文摘要和哈希。
+5. 用户接受后，Server 重新加载计划。
+6. 再次核对 state、revision、安全策略、摘要和哈希。
+7. 任一变化返回 `PLAN_CHANGED`，不创建进程。
 
 拒绝、取消、客户端不支持 elicitation 或哈希错误时都不会启动 MAA。
+
+`confirmation = "none"` 是显式的降级开关：跳过第 4 步表单，其余校验不变。
+默认关闭；开启意味着用户接受"工具授权界面中的摘要参数"作为唯一人工关卡，
+仅适用于单人可信环境。
 
 ## 进程与并发
 
@@ -67,6 +74,9 @@
 - Windows 运行记录同时保存 PID 和进程创建时间，防止 PID 复用。
 - 每个运行使用以 `run_id` 命名的 Job Object；强制停止作用于完整 Job。
 - 运行记录持久化失败时，只在身份完全匹配后回滚该 Job。
+- 配置 `[emulator]` 时，适配器只启动显式给定的可执行文件，不加入 Job；
+  只有"由适配器本次启动"且 PID 与创建时间双重匹配的模拟器进程才会在
+  `stop_after_run` 下被关闭，已在运行的模拟器不受影响。
 
 Server 重启时：
 
