@@ -493,6 +493,7 @@ fn chinese_summary_always_states_finite_resources_and_fixed_safety_values() {
     let summary = summarize_plan(&complete_plan()).expect("summarize complete plan");
 
     for required in [
+        "消耗上限：理智药 0；招募许可 4；加急许可 0；源石 0（固定）",
         "类别：活动",
         "关卡：XX-8",
         "次数：5",
@@ -515,6 +516,7 @@ fn summary_without_optional_task_families_still_states_all_safety_decisions() {
     let summary = summarize_plan(&plan).expect("summarize minimal safe plan");
 
     for required in [
+        "消耗上限：理智药 0；招募许可 0；加急许可 0；源石 0（固定）",
         "关卡：无",
         "次数：0",
         "理智药：0",

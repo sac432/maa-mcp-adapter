@@ -5,8 +5,36 @@ use super::normalize::{CanonicalTask, normalize_plan};
 
 pub fn summarize_plan(plan: &DailyPlan) -> Result<String, DomainError> {
     let plan = normalize_plan(plan)?;
+
+    let mut total_medicine: u32 = 0;
+    let mut recruit_permits: u8 = 0;
+    let mut expedited_permits: u8 = 0;
+    for task in &plan.tasks {
+        match task {
+            CanonicalTask::Fight { medicine, .. } => {
+                total_medicine += u32::from(*medicine);
+            }
+            CanonicalTask::Recruit {
+                max_recruits,
+                confirm_recruitment,
+                use_expedited_plans,
+            } => {
+                if *confirm_recruitment {
+                    recruit_permits = recruit_permits.saturating_add(*max_recruits);
+                }
+                if *use_expedited_plans {
+                    expedited_permits = expedited_permits.saturating_add(*max_recruits);
+                }
+            }
+            _ => {}
+        }
+    }
+
     let mut lines = vec![
         format!("配置档：{}", plan.profile),
+        format!(
+            "消耗上限：理智药 {total_medicine}；招募许可 {recruit_permits}；加急许可 {expedited_permits}；源石 0（固定）"
+        ),
         "账号切换：禁止（固定）".to_owned(),
     ];
 
