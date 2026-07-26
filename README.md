@@ -48,7 +48,7 @@ Agent 不能从一句模糊请求直接启动 MAA。标准流程是：
 
 完整威胁模型见 [安全模型](docs/security-model.md)。
 
-## 十一个 MCP Tools
+## 十二个 MCP Tools
 
 | Tool | 用途 |
 |---|---|
@@ -63,6 +63,7 @@ Agent 不能从一句模糊请求直接启动 MAA。标准流程是：
 | `get_run_log` | 读取受限、脱敏的日志尾部 |
 | `stop_run` | 精确停止记录中的 Windows Job |
 | `collect_diagnostics` | 生成脱敏诊断报告并指向 GitHub 反馈 |
+| `setup_environment` | 从 MAA 图形版配置发现启动信息，经确认后一键初始化 |
 
 ## 构建
 
@@ -78,7 +79,7 @@ Set-Location maa-mcp-adapter
 cargo build --release --locked
 ```
 
-二进制位于 `target\release\maa-mcp-adapter.exe`。适配器通过 `config.toml` 找到用户已有的 `maa.exe` 或 `maa-cli.exe`，不会复制 MAA 配置档。
+二进制位于 `target\release\maa-mcp-adapter.exe`。适配器通过 `config.toml` 找到用户已有的 `maa.exe` 或 `maa-cli.exe`，不会修改或覆盖 MAA 的既有配置档；`setup_environment` 仅在用户经确认后新建 maa-cli 配置档。
 
 ## 配置与客户端
 

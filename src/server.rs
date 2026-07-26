@@ -18,6 +18,7 @@ use crate::tools::runs::{
     ExecuteDailyPlanInput, ExecuteDailyPlanOutput, GetRunLogInput, GetRunLogOutput,
     GetRunStatusInput, RunStatusOutput, StopRunInput,
 };
+use crate::tools::setup::{SetupEnvironmentInput, SetupEnvironmentOutput};
 use crate::tools::{PlanViewOutput, SharedRuntime, ToolError, ToolResult, parse_arguments};
 
 const SERVER_INSTRUCTIONS: &str = "\
@@ -232,6 +233,27 @@ impl AdapterServer {
     ) -> ToolResult<ExecuteDailyPlanOutput> {
         let input = parse_arguments(arguments)?;
         crate::tools::runs::execute_daily_plan(&self.runtime, input, peer).await
+    }
+
+    #[tool(
+        name = "setup_environment",
+        description = "从 MAA 图形版配置发现启动信息，经表单确认后新建 maa-cli 配置档并补全适配器 [emulator] 配置；绝不覆盖已有文件。",
+        input_schema = schema_for_type::<SetupEnvironmentInput>(),
+        annotations(
+            title = "一键初始化环境",
+            read_only_hint = false,
+            destructive_hint = true,
+            idempotent_hint = true,
+            open_world_hint = false
+        )
+    )]
+    async fn setup_environment(
+        &self,
+        arguments: rmcp::model::JsonObject,
+        peer: Peer<RoleServer>,
+    ) -> ToolResult<SetupEnvironmentOutput> {
+        let input = parse_arguments(arguments)?;
+        crate::tools::setup::setup_environment(&self.runtime, input, peer).await
     }
 
     #[tool(

@@ -44,6 +44,7 @@ impl FakeMaa {
         .expect("configure fake maa config directory");
     }
 
+    #[allow(dead_code)]
     pub fn set_mode(&self, mode: &str) {
         fs::write(self.executable.with_extension("mode"), mode).expect("configure fake maa mode");
     }

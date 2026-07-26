@@ -6,7 +6,7 @@
 %LOCALAPPDATA%\maa-mcp-adapter\config.toml
 ```
 
-它不会复制、迁移或修改 `maa-cli` 的配置档。
+它不会修改或覆盖 `maa-cli` 的既有配置档；`setup_environment` 工具仅在用户经表单确认后**新建**配置档（已存在的文件永不触碰）。
 
 ## 完整示例
 
@@ -144,6 +144,22 @@ locks\active-run.lock
   PID 与进程创建时间双重匹配终止进程。已在运行的模拟器（适配器未
   启动过的）在两种方式下都不会被关闭。
 
+## 新用户一键初始化：`setup_environment`
+
+新用户不必手写上述配置。安装 maa-cli 后，让 Agent 调用
+`setup_environment`（可传 `maa_gui_config` 指向 MAA 图形版的
+`gui.json`），它会：
+
+1. 从 MAA 配置**只读**发现 adb 路径、连接地址与模拟器安装位置；
+2. 生成一份 maa-cli 配置档（默认名 `mcp-daily`，含 `[connection]`）——
+   **仅新建，已存在的文件永不覆盖**；
+3. 自动定位受支持的模拟器 CLI（MuMuManager / 雷电 ldconsole 等）并把
+   `maa_gui_config` 与 `[emulator]` 追加到本适配器的 `config.toml`
+   （原文件先备份，合并结果先验证再原子写入；已有的节不重复添加）。
+
+全部写入内容会先在确认表单中逐字展示，用户同意后才落盘。完成后重启
+`maa` Server 并调用 `check_environment` 验证 `can_execute = true`。
+
 ## 修改配置后的步骤
 
 1. 停止并重新启动 MCP 客户端中的 `maa` Server。
@@ -177,5 +193,4 @@ api_url = "https://raw.githubusercontent.com/MaaAssistantArknights/MaaRelease/ma
 2. `maa --batch run <任务文件> --dry-run --profile <配置档>` 退出码 0；
 3. `check_environment` 返回 `can_execute = true`。
 
-这是 `maa-cli` 的公开配置，不涉及本适配器；适配器自身从不修改
-`maa-cli` 的配置档。
+这是 `maa-cli` 的公开配置，不涉及本适配器；适配器自身从不修改 `maa-cli` 的既有配置档。

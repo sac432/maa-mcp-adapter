@@ -34,7 +34,7 @@ codex mcp list
 approval_policy = { granular = { mcp_elicitations = true } }
 ```
 
-重新启动 Codex；在 TUI 使用 `/mcp`，或在桌面/IDE 的 MCP Server 设置中确认 `maa` 已连接并显示十一个 Tools。
+重新启动 Codex；在 TUI 使用 `/mcp`，或在桌面/IDE 的 MCP Server 设置中确认 `maa` 已连接并显示十二个 Tools。
 
 卸载：
 
@@ -85,7 +85,7 @@ claude mcp remove maa
 
 在两个客户端分别完成：
 
-1. 查看 MCP Server，确认恰好出现十一个 Tools。
+1. 查看 MCP Server，确认恰好出现十二个 Tools。
 2. 输入：“帮我启动游戏刷日常。”
 3. 确认 Agent 对配置档、任务类型、关卡、次数、理智药、公招和奖励等不明确项逐项提问。
 4. 检查最终中文摘要明确写出碎石 `0`、禁止账号切换、禁止付费购买和是否关闭游戏。

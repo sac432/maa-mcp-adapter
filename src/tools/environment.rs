@@ -178,7 +178,7 @@ pub async fn check_environment(runtime: &SharedRuntime) -> ToolResult<CheckEnvir
     }
 }
 
-fn discover_gui_settings(path: &std::path::Path) -> Result<GuiDiscoveryOutput, String> {
+pub(crate) fn discover_gui_settings(path: &std::path::Path) -> Result<GuiDiscoveryOutput, String> {
     let contents = std::fs::read_to_string(path)
         .map_err(|_| format!("无法读取 MAA 图形版配置：{}", path.display()))?;
     let value: serde_json::Value = serde_json::from_str(&contents)

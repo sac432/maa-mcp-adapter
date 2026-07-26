@@ -14,6 +14,10 @@ use maa_mcp_adapter::domain::{
 use maa_mcp_adapter::planning::hash::hash_plan;
 use maa_mcp_adapter::storage::{FileRunRepository, RunRepository};
 
+mod support;
+
+use support::fake_maa::FakeMaa;
+
 #[test]
 fn stdio_server_initializes_and_lists_tools() {
     let mut child = Command::new(env!("CARGO_BIN_EXE_maa-mcp-adapter"))
@@ -110,6 +114,7 @@ fn stdio_server_initializes_and_lists_tools() {
             "get_run_log",
             "get_run_status",
             "preview_daily_plan",
+            "setup_environment",
             "stop_run",
             "update_daily_plan",
         ]
@@ -502,6 +507,98 @@ fn run_tools_return_strict_status_bounded_log_and_safe_stop_error() {
         json!({"run_id": run_id.to_string(), "stream": "stdout", "extra": true}),
     );
     assert_tool_error(&unknown, "INVALID_ARGUMENTS");
+    client.finish();
+}
+
+#[test]
+fn setup_environment_writes_profile_and_emulator_config_once() {
+    let data = tempfile::tempdir().expect("temporary app data");
+    let fake_root = tempfile::tempdir().expect("fake maa root");
+    let fake = FakeMaa::build(fake_root.path());
+    let maa_config_dir = fake_root.path().join("maa-config");
+    std::fs::create_dir_all(&maa_config_dir).expect("maa config dir");
+    fake.set_config_directory(&maa_config_dir);
+
+    let emulator_root = fake_root.path().join("MuMu Player 12");
+    std::fs::create_dir_all(emulator_root.join("shell")).expect("shell dir");
+    std::fs::create_dir_all(emulator_root.join("nx_main")).expect("nx_main dir");
+    let adb = emulator_root.join("shell").join("adb.exe");
+    std::fs::write(&adb, "fake").expect("fake adb");
+    std::fs::write(
+        emulator_root.join("nx_main").join("MuMuManager.exe"),
+        "fake",
+    )
+    .expect("fake manager");
+
+    let gui_dir = fake_root.path().join("maa-gui");
+    std::fs::create_dir_all(&gui_dir).expect("gui dir");
+    let gui_path = gui_dir.join("gui.json");
+    std::fs::write(
+        &gui_path,
+        serde_json::to_string(&json!({
+            "Configurations": {"Default": {
+                "Connect.AdbPath": adb.display().to_string(),
+                "Connect.Address": "127.0.0.1:16384"
+            }},
+            "Current": "Default"
+        }))
+        .expect("serialize gui fixture"),
+    )
+    .expect("write gui fixture");
+
+    let executable = fake
+        .executable()
+        .display()
+        .to_string()
+        .replace('\\', "\\\\");
+    let config = format!("maa_executable = \"{executable}\"\nconfirmation = \"none\"\n");
+    let mut client = McpClient::spawn_into(data, Some(&config));
+    client.initialize();
+
+    let applied = client.call(
+        10,
+        "setup_environment",
+        json!({"maa_gui_config": gui_path.display().to_string()}),
+    );
+    let output = &applied["result"]["structuredContent"];
+    assert_eq!(output["outcome"], "applied", "setup applies: {applied}");
+    assert_eq!(output["profile_written"], true);
+    assert_eq!(output["adapter_config_updated"], true);
+    assert_eq!(output["emulator_configured"], true);
+
+    let profile_path = maa_config_dir.join("profiles").join("mcp-daily.toml");
+    let profile = std::fs::read_to_string(&profile_path).expect("profile written");
+    assert!(profile.contains("preset = \"ADB\""));
+    assert!(profile.contains("address = \"127.0.0.1:16384\""));
+
+    let adapter_config = std::fs::read_to_string(
+        client
+            ._data
+            .path()
+            .join("maa-mcp-adapter")
+            .join("config.toml"),
+    )
+    .expect("adapter config");
+    assert!(adapter_config.contains("[emulator]"));
+    assert!(adapter_config.contains("MuMuManager.exe"));
+    assert!(adapter_config.contains("maa_gui_config"));
+    assert!(adapter_config.contains("stop_after_run = false"));
+
+    let again = client.call(
+        11,
+        "setup_environment",
+        json!({"maa_gui_config": gui_path.display().to_string()}),
+    );
+    let output = &again["result"]["structuredContent"];
+    assert_eq!(output["outcome"], "applied");
+    assert_eq!(
+        output["profile_written"], false,
+        "profile never overwritten"
+    );
+    assert_eq!(
+        output["adapter_config_updated"], false,
+        "second run adds nothing"
+    );
     client.finish();
 }
 

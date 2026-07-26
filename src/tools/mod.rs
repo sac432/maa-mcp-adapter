@@ -20,6 +20,7 @@ pub mod diagnostics;
 pub mod environment;
 pub mod plans;
 pub mod runs;
+pub mod setup;
 
 pub fn plan_service(runtime: &SharedRuntime) -> Result<PlanService<FilePlanRepository>, ToolError> {
     let state_directory = runtime.state_directory().map_err(ToolError::from_runtime)?;

@@ -5,7 +5,7 @@
 - [x] `cargo fmt --all -- --check`
 - [x] fake CLI crate 格式检查
 - [x] `cargo clippy --all-targets --all-features -- -D warnings`
-- [x] `cargo test --all-targets --all-features`：98 项通过
+- [x] `cargo test --all-targets --all-features`：103 项通过
 - [x] fake MAA 完整 STDIO 流程：
   `check_environment → get_daily_options → create → update → preview → execute → status → log → stop`
 - [x] elicitation accept、decline、cancel 和 capability 缺失
@@ -14,7 +14,7 @@
 - [x] 日志 200 行/64 KiB、脱敏和路径逃逸
 - [x] 七天终态保留和未知内容保护
 - [x] `cargo build --release --locked`
-- [x] release EXE 独立 STDIO 初始化并列出十一个 Tools
+- [x] release EXE 独立 STDIO 初始化并列出十二个 Tools
 - [x] 发布候选仅包含适配器、校验和、LICENSE、NOTICE、README 和文档
 - [x] 未修改 `.github/workflows`
 - [x] 未推送或创建 Release
