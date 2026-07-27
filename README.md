@@ -3,8 +3,7 @@
 Unofficial MCP adapter for MAA.
 
 让 Claude Code、Codex、Cursor 等任何支持 MCP 的 AI Agent，在明确的安全边界内
-一句话完成 [MAA](https://maa.plus)（明日方舟小助手）日常：自动开模拟器、
-按你保存的 MAA 设置执行日常、跑完关闭——每一步真正动手前都有可核对的确认。
+一句话完成 [MAA](https://maa.plus)（明日方舟小助手）日常：自动开模拟器、按你保存的 MAA 设置执行日常、跑完关闭——每一步真正动手前都有可核对的确认。
 目前只是初版功能，最终目的是一句话让agent通过maa完成所有maa能完成的事以及maa做不到的事（例如maa 搜索攻略+ maa自动挑战指定关卡）
 
 > [!IMPORTANT]
@@ -24,32 +23,6 @@ Unofficial MCP adapter for MAA.
 - **可审计、可反馈**：受限脱敏的运行日志；`collect_diagnostics` 一键生成
   可直接粘贴到 Issue 的隐私安全诊断报告。
 
-## 🔒 安全工作流
-
-Agent 不能从一句模糊请求直接启动 MAA。标准流程：
-
-```text
-用户意图
-→ Agent 逐项询问缺失信息（或从 MAA 保存设置派生默认计划）
-→ 创建/更新 Draft → 生成完整中文摘要和计划哈希
-→ Agent 原样携带摘要与哈希调用执行（服务端逐字核对，无法伪造）
-→ MCP 客户端显示二次确认表单 → 用户接受准确摘要
-→ Server 再次核对 revision、策略、摘要和哈希
-→ dry-run → 启动唯一后台任务
-```
-
-固定限制（服务端强制，任何 Agent 无法覆盖）：
-
-- 只允许 `StartUp`、`Fight`、`Recruit`、`Infrast`、`Mall`、`Award`、`CloseDown`；
-- 碎石恒为 `0`，禁止账号切换和付费购买；
-- 理智药、刷图次数和公招消耗必须是有限显式值；
-- 不接受任意 `maa-cli` 参数、Shell 命令或自定义任务映射；
-- 同一时间最多一个活动运行；停止前必须同时匹配 PID 与进程创建时间；
-- 日志每次最多返回 200 行、64 KiB，并应用配置的脱敏模式。
-
-单人可信环境可通过 `confirmation = "none"` 显式跳过表单一步（其余校验不变，
-摘要仍随调用参数展示在客户端授权界面）。完整威胁模型见
-[安全模型](docs/security-model.md)。
 
 ## 📋 前置条件
 
