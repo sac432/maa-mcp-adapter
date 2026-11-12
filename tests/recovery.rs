@@ -128,7 +128,13 @@ async fn named_job_can_be_reopened_and_terminate_the_recorded_process() {
         .await
         .expect("launch execution");
 
-    terminate_job(&launched.record.run_id, 1).expect("terminate named job");
+    terminate_job(
+        &launched.record.run_id,
+        1,
+        launched.record.pid,
+        launched.record.process_start_identity,
+    )
+    .expect("terminate named job");
 
     assert!(
         !process_identity_matches(launched.record.pid, launched.record.process_start_identity)
@@ -181,7 +187,14 @@ async fn stop_run_forces_the_named_job_and_records_the_method() {
         .expect("stop recorded run");
 
     assert_eq!(stopped.status, RunStatus::Stopped);
-    assert_eq!(stopped.stop_method, Some(StopMethod::Forced));
+    assert_eq!(
+        stopped.stop_method,
+        Some(if cfg!(windows) {
+            StopMethod::Forced
+        } else {
+            StopMethod::Graceful
+        })
+    );
     assert!(
         !process_identity_matches(stopped.pid, stopped.process_start_identity).unwrap_or(false)
     );
@@ -195,9 +208,16 @@ async fn terminal_run_stops_only_the_recorded_adapter_started_emulator() {
     let fake = configured_background_fake(temp.path());
     let launched = launch_ready_plan(&state, &fake).await;
 
+    #[cfg(windows)]
     let comspec = std::env::var_os("ComSpec").expect("cmd.exe available");
+    #[cfg(unix)]
+    let comspec = std::ffi::OsString::from("/bin/sleep");
+    #[cfg(windows)]
+    let emulator_args = vec!["/C", "ping", "-n", "30", "127.0.0.1"];
+    #[cfg(unix)]
+    let emulator_args = vec!["30"];
     let mut emulator = std::process::Command::new(&comspec)
-        .args(["/C", "ping", "-n", "30", "127.0.0.1"])
+        .args(emulator_args)
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null())
@@ -331,11 +351,12 @@ async fn restart_recovery_monitors_a_matching_detached_process() {
         recover_active_run(&state).expect("recover active run"),
         RecoveryOutcome::Monitoring(run_id)
     );
-    terminate_job(&run_id, 7).expect("terminate recovered job");
+    terminate_job(&run_id, 7, record.pid, record.process_start_identity)
+        .expect("terminate recovered job");
     let controls = RunControlService::new(state.clone(), Vec::new());
     let terminal = wait_for_terminal(&controls, run_id).await;
     assert_eq!(terminal.status, RunStatus::Failed);
-    assert_eq!(terminal.exit_code, Some(7));
+    assert_eq!(terminal.exit_code, Some(if cfg!(windows) { 7 } else { -1 }));
 }
 
 #[test]

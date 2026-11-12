@@ -438,7 +438,7 @@ impl ExecutionService {
         if !process_identity_matches(pid, identity)? {
             return Err(PlatformError::IdentityMismatch);
         }
-        terminate_job(&run_id, 1)?;
+        terminate_job(&run_id, 1, pid, identity)?;
         wait_for_exit(pid, identity, std::time::Duration::from_secs(5))?
             .ok_or(PlatformError::TerminationTimeout)?;
         Ok(())

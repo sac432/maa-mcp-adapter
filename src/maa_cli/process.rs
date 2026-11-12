@@ -70,6 +70,31 @@ pub async fn run(
     let mut command = Command::new(executable);
     command.args(args).stdin(Stdio::null()).kill_on_drop(true);
 
+    #[cfg(target_os = "macos")]
+    command.process_group(0);
+    #[cfg(target_os = "macos")]
+    let output = {
+        command.stdout(Stdio::piped()).stderr(Stdio::piped());
+        let mut child = command.spawn().map_err(ProcessError::Spawn)?;
+        let pid = child.id().expect("new child PID");
+        let identity = match crate::platform::process_identity_for_pid(pid) {
+            Ok(identity) => identity,
+            Err(error) => {
+                let _ = child.kill().await;
+                return Err(error.into());
+            }
+        };
+        let output = child.wait_with_output();
+        tokio::pin!(output);
+        match tokio::time::timeout(timeout, &mut output).await {
+            Ok(output) => output.map_err(ProcessError::Spawn)?,
+            Err(_) => {
+                let _ = crate::platform::terminate_job(&RunId::new(), 1, pid, identity);
+                return Err(ProcessError::Timeout(timeout));
+            }
+        }
+    };
+    #[cfg(not(target_os = "macos"))]
     let output = tokio::time::timeout(timeout, command.output())
         .await
         .map_err(|_| ProcessError::Timeout(timeout))?
@@ -109,6 +134,11 @@ pub fn spawn_background(
         .stdin(Stdio::null())
         .stdout(Stdio::from(stdout))
         .stderr(Stdio::from(stderr));
+    #[cfg(target_os = "macos")]
+    {
+        use std::os::unix::process::CommandExt;
+        command.process_group(0);
+    }
     #[cfg(windows)]
     {
         use std::os::windows::process::CommandExt;
@@ -120,6 +150,7 @@ pub fn spawn_background(
         Ok(identity) => identity,
         Err(error) => {
             let _ = child.kill();
+            let _ = child.wait();
             return Err(ProcessError::Identity(error));
         }
     };

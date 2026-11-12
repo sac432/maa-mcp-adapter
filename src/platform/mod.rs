@@ -8,5 +8,10 @@ pub use windows::{
     wait_for_exit,
 };
 
-#[cfg(not(windows))]
-compile_error!("maa-mcp-adapter currently supports Windows only");
+#[cfg(target_os = "macos")]
+mod macos;
+#[cfg(target_os = "macos")]
+pub use macos::*;
+
+#[cfg(not(any(windows, target_os = "macos")))]
+compile_error!("maa-mcp-adapter supports Windows and macOS");

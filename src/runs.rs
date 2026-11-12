@@ -157,7 +157,7 @@ impl RunControlService {
             .join(run_id.to_string())
             .join("stop.requested");
         write_stop_marker(&stop_path, StopMethod::Graceful)?;
-        let _ = request_graceful_stop(record.pid);
+        let _ = request_graceful_stop(record.pid, record.process_start_identity);
         if let Some(exit_code) =
             wait_for_exit(record.pid, record.process_start_identity, graceful_timeout)?
         {
@@ -165,7 +165,7 @@ impl RunControlService {
         }
 
         write_stop_marker(&stop_path, StopMethod::Forced)?;
-        terminate_job(run_id, 1)?;
+        terminate_job(run_id, 1, record.pid, record.process_start_identity)?;
         let exit_code = wait_for_exit(
             record.pid,
             record.process_start_identity,

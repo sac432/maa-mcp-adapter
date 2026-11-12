@@ -685,7 +685,7 @@ fn full_stdio_daily_flow_reaches_status_log_and_stop() {
     assert_eq!(stopped["result"]["structuredContent"]["status"], "stopped");
     assert_eq!(
         stopped["result"]["structuredContent"]["stop_method"],
-        "forced"
+        if cfg!(windows) { "forced" } else { "graceful" }
     );
     client.finish();
 }

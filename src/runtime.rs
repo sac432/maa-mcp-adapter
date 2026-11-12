@@ -103,7 +103,7 @@ fn issue_of(cached: &CachedRuntime) -> RuntimeIssue {
 }
 
 fn config_modified_time() -> Option<SystemTime> {
-    let local_app_data = std::env::var_os("LOCALAPPDATA")?;
+    let local_app_data = crate::config::application_data_directory()?;
     let default_state = resolve_state_directory(None, Some(&local_app_data)).ok()?;
     fs::metadata(default_state.join("config.toml"))
         .and_then(|metadata| metadata.modified())
@@ -135,10 +135,10 @@ impl RuntimeIssue {
 }
 
 fn load_runtime() -> Result<(AdapterConfig, PathBuf), RuntimeIssue> {
-    let local_app_data = std::env::var_os("LOCALAPPDATA").ok_or_else(|| {
+    let local_app_data = crate::config::application_data_directory().ok_or_else(|| {
         RuntimeIssue::new(
             "LOCAL_APP_DATA_UNAVAILABLE",
-            "无法确定 Windows 应用数据目录。",
+            "无法确定用户应用数据目录。",
             Vec::new(),
             vec!["设置 LOCALAPPDATA，或在受支持的 Windows 用户会话中启动适配器。".to_owned()],
         )

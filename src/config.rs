@@ -135,7 +135,7 @@ impl AdapterConfig {
 
         if let Some(search_path) = search_path {
             let directories: Vec<_> = std::env::split_paths(search_path).collect();
-            for executable_name in ["maa.exe", "maa-cli.exe"] {
+            for executable_name in executable_names() {
                 for directory in &directories {
                     let candidate = directory.join(executable_name);
                     if candidate.is_file() {
@@ -149,6 +149,34 @@ impl AdapterConfig {
         }
 
         Err(ConfigError::MaaCliNotFound)
+    }
+}
+
+fn executable_names() -> &'static [&'static str] {
+    #[cfg(windows)]
+    {
+        &["maa.exe", "maa-cli.exe"]
+    }
+    #[cfg(not(windows))]
+    {
+        &["maa", "maa-cli"]
+    }
+}
+
+pub(crate) fn application_data_directory() -> Option<std::ffi::OsString> {
+    #[cfg(windows)]
+    {
+        std::env::var_os("LOCALAPPDATA")
+    }
+    #[cfg(target_os = "macos")]
+    {
+        std::env::var_os("LOCALAPPDATA").or_else(|| {
+            std::env::var_os("HOME").map(|home| {
+                PathBuf::from(home)
+                    .join("Library/Application Support")
+                    .into_os_string()
+            })
+        })
     }
 }
 

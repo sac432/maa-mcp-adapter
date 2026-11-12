@@ -82,6 +82,9 @@ pub async fn ensure_running(
                     break;
                 }
                 if tokio::time::Instant::now() >= deadline {
+                    if let Some(started) = started {
+                        let _ = terminate_if_matches(started.pid, started.identity());
+                    }
                     return Err(EmulatorError::NotReady {
                         address: address.to_owned(),
                         waited: wait,
@@ -104,17 +107,29 @@ fn spawn_emulator(config: &EmulatorConfig) -> Result<StartedEmulator, EmulatorEr
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::null());
+    #[cfg(target_os = "macos")]
+    {
+        use std::os::unix::process::CommandExt;
+        command.process_group(0);
+    }
     #[cfg(windows)]
     {
         use std::os::windows::process::CommandExt;
         use windows_sys::Win32::System::Threading::{CREATE_NEW_PROCESS_GROUP, DETACHED_PROCESS};
         command.creation_flags(CREATE_NEW_PROCESS_GROUP | DETACHED_PROCESS);
     }
-    let child = command.spawn().map_err(|source| EmulatorError::Spawn {
+    let mut child = command.spawn().map_err(|source| EmulatorError::Spawn {
         path: config.path.clone(),
         source,
     })?;
-    let identity = process_identity_for_child(&child)?;
+    let identity = match process_identity_for_child(&child) {
+        Ok(identity) => identity,
+        Err(error) => {
+            let _ = child.kill();
+            let _ = child.wait();
+            return Err(error.into());
+        }
+    };
     let started = StartedEmulator {
         pid: child.id(),
         creation_time_100ns: identity.creation_time_100ns,
@@ -245,11 +260,17 @@ mod tests {
     fn a_command_marker_runs_the_configured_shutdown_once() {
         let temp = tempfile::tempdir().expect("run directory");
         let sentinel = temp.path().join("stopped-sentinel");
+        #[cfg(windows)]
         let comspec = std::env::var_os("ComSpec").expect("cmd.exe available");
+        #[cfg(unix)]
+        let comspec = std::ffi::OsString::from("/bin/mkdir");
         super::write_marker(
             temp.path(),
             &super::EmulatorStop::Command {
                 path: comspec.into(),
+                #[cfg(unix)]
+                args: vec![sentinel.display().to_string()],
+                #[cfg(windows)]
                 args: vec![
                     "/C".to_owned(),
                     "mkdir".to_owned(),
@@ -270,10 +291,13 @@ mod tests {
 
     #[tokio::test]
     async fn an_unreachable_address_reports_not_ready_within_the_deadline() {
+        #[cfg(windows)]
         let helper = std::env::var_os("ComSpec").expect("cmd.exe available");
+        #[cfg(unix)]
+        let helper = std::ffi::OsString::from("/bin/sleep");
         let config = EmulatorConfig {
             path: std::path::PathBuf::from(helper),
-            args: Vec::new(),
+            args: vec!["0".into()],
             address: Some("127.0.0.1:9".to_owned()),
             adb_path: None,
             startup_wait_seconds: 1,

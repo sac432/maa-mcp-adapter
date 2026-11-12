@@ -20,7 +20,10 @@ impl FakeMaa {
             .expect("start Cargo for fake maa fixture");
         assert!(status.success(), "compile fake maa fixture");
 
-        let compiled = target_directory.join("debug/fake-maa-fixture.exe");
+        let compiled = target_directory.join(format!(
+            "debug/fake-maa-fixture{}",
+            std::env::consts::EXE_SUFFIX
+        ));
         let executable = root.join("玛恩纳 maa & safe.exe");
         fs::copy(compiled, &executable).expect("copy fake maa executable");
         let args_log = executable.with_extension("args");

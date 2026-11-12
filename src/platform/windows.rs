@@ -100,7 +100,15 @@ pub fn assign_new_job(run_id: &crate::domain::RunId, child: &Child) -> Result<()
     result
 }
 
-pub fn terminate_job(run_id: &crate::domain::RunId, exit_code: u32) -> Result<(), PlatformError> {
+pub fn terminate_job(
+    run_id: &crate::domain::RunId,
+    exit_code: u32,
+    pid: u32,
+    identity: ProcessStartIdentity,
+) -> Result<(), PlatformError> {
+    if !process_identity_matches(pid, identity)? {
+        return Err(PlatformError::IdentityMismatch);
+    }
     let name = job_name(run_id);
     // SAFETY: the name is a live NUL-terminated UTF-16 buffer and inheritance is disabled.
     let job = unsafe { OpenJobObjectW(JOB_OBJECT_TERMINATE, 0, name.as_ptr()) };
@@ -117,7 +125,13 @@ pub fn terminate_job(run_id: &crate::domain::RunId, exit_code: u32) -> Result<()
     result
 }
 
-pub fn request_graceful_stop(pid: u32) -> Result<(), PlatformError> {
+pub fn request_graceful_stop(
+    pid: u32,
+    expected: ProcessStartIdentity,
+) -> Result<(), PlatformError> {
+    if !process_identity_matches(pid, expected)? {
+        return Err(PlatformError::IdentityMismatch);
+    }
     // SAFETY: pid is the verified process-group id created with CREATE_NEW_PROCESS_GROUP.
     if unsafe { GenerateConsoleCtrlEvent(CTRL_BREAK_EVENT, pid) } == 0 {
         Err(last_error())

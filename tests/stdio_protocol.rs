@@ -694,7 +694,9 @@ fn collect_diagnostics_produces_a_redacted_pasteable_report() {
     let run_directory = state.join("runs").join(run_id.to_string());
     std::fs::create_dir_all(&run_directory).expect("run directory");
     std::fs::write(run_directory.join("stdout.log"), "").expect("stdout");
-    let profile_path = std::env::var("USERPROFILE").expect("USERPROFILE available");
+    let profile_path = std::env::var("USERPROFILE")
+        .or_else(|_| std::env::var("HOME"))
+        .expect("user home available");
     std::fs::write(
         run_directory.join("stderr.log"),
         format!("token=secret-value at {profile_path}\\AppData\\some.log\nStartUp Start\n"),

@@ -28,7 +28,7 @@ Unofficial MCP adapter for MAA.
 
 | 依赖 | 说明 |
 |---|---|
-| Windows 10/11 | 当前仅支持 Windows |
+| Windows 10/11 或 macOS | macOS 为实验支持，见 [macOS 配置与限制](docs/macos.md) |
 | [maa-cli](https://github.com/MaaAssistantArknights/maa-cli) | 已安装并完成 `maa install`（MaaCore 与资源）；本适配器不代装 |
 | 安卓模拟器 | MuMu 12 / 雷电等，已能被 MAA 正常连接 |
 | MAA 图形版（推荐） | 已保存过连接与日常任务配置——一键初始化和默认计划都从这里读取 |
@@ -144,7 +144,7 @@ Agent 会调用 `setup_environment`：自动发现 adb 地址与模拟器 → **
 | `execute_daily_plan` | 逐字核对摘要与哈希、表单确认后启动 |
 | `get_run_status` | 查询并核对运行状态 |
 | `get_run_log` | 读取受限、脱敏的日志尾部 |
-| `stop_run` | 精确停止记录中的 Windows Job |
+| `stop_run` | 精确停止记录中的 Windows Job / macOS 进程组 |
 | `collect_diagnostics` | 生成脱敏诊断报告并指向 GitHub 反馈 |
 
 ## ⚙️ 配置
@@ -172,7 +172,7 @@ Agent 会调用 `setup_environment`：自动发现 adb 地址与模拟器 → **
 
 ## ⚠️ 已知限制
 
-- 仅支持 Windows；真实 `maa-cli` 兼容性按版本人工验收（当前：`v0.7.5` /
+- macOS 为实验支持（[配置与限制](docs/macos.md)）；真实 `maa-cli` 兼容性按版本人工验收（当前：`v0.7.5` /
   MaaCore `v6.14.2`）；
 - 执行确认依赖客户端正确实现 MCP form elicitation：Claude Code 终端 CLI
   已验证可用；部分图形界面客户端声明支持但不渲染表单（会表现为"自动拒绝"），

@@ -312,10 +312,13 @@ fn yes_no(value: bool) -> &'static str {
 /// Windows 用户名。大小写不敏感，兼容正反斜杠写法。
 fn sanitize_user_paths(text: &str) -> String {
     let mut result = text.to_owned();
-    if let Some(profile) = std::env::var_os("USERPROFILE").and_then(|value| {
-        let value = value.to_string_lossy().into_owned();
-        if value.len() > 3 { Some(value) } else { None }
-    }) {
+    if let Some(profile) = std::env::var_os("USERPROFILE")
+        .or_else(|| std::env::var_os("HOME"))
+        .and_then(|value| {
+            let value = value.to_string_lossy().into_owned();
+            if value.len() > 3 { Some(value) } else { None }
+        })
+    {
         for variant in [profile.clone(), profile.replace('\\', "/")] {
             result = replace_ignore_ascii_case(&result, &variant, "%USERPROFILE%");
         }

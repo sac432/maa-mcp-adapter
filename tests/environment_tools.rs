@@ -16,7 +16,11 @@ fn explicit_absolute_executable_takes_priority_over_path() {
     let path_dir = temp.path().join("path-bin");
     fs::create_dir(&path_dir).expect("create PATH directory");
     fs::write(&explicit, b"fake executable").expect("create configured executable");
-    fs::write(path_dir.join("maa.exe"), b"fake executable").expect("create PATH executable");
+    fs::write(
+        path_dir.join(format!("maa{}", std::env::consts::EXE_SUFFIX)),
+        b"fake executable",
+    )
+    .expect("create PATH executable");
 
     let config = AdapterConfig {
         maa_executable: Some(explicit.clone()),
@@ -40,8 +44,8 @@ fn path_discovery_prefers_maa_exe_over_maa_cli_exe() {
     let second_dir = temp.path().join("second");
     fs::create_dir_all(&first_dir).expect("create first PATH directory");
     fs::create_dir_all(&second_dir).expect("create second PATH directory");
-    let maa_cli = first_dir.join("maa-cli.exe");
-    let maa = second_dir.join("maa.exe");
+    let maa_cli = first_dir.join(format!("maa-cli{}", std::env::consts::EXE_SUFFIX));
+    let maa = second_dir.join(format!("maa{}", std::env::consts::EXE_SUFFIX));
     fs::write(&maa_cli, b"fake executable").expect("create maa-cli executable");
     fs::write(&maa, b"fake executable").expect("create maa executable");
 
@@ -58,7 +62,7 @@ fn path_discovery_falls_back_to_maa_cli_exe() {
     let temp = tempdir().expect("create test directory");
     let path_dir = temp.path().join("bin");
     fs::create_dir(&path_dir).expect("create PATH directory");
-    let maa_cli = path_dir.join("maa-cli.exe");
+    let maa_cli = path_dir.join(format!("maa-cli{}", std::env::consts::EXE_SUFFIX));
     fs::write(&maa_cli, b"fake executable").expect("create maa-cli executable");
 
     let resolved = AdapterConfig::default()
